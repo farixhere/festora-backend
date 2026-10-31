@@ -204,7 +204,7 @@ async function dispatch(body:any,req:VercelRequest) {
    await c.query("INSERT INTO organiser_profiles(user_id,institution,phone,place,signup_source) VALUES($1,$2,$3,$4,'web')",[u.id,inst,phone,place]);
    await c.query("UPDATE email_otp_challenges SET consumed_at=now() WHERE id=$1",[ch.id]);
    const session=await createSession(u.id,c);
-   await c.query("INSERT INTO platform_audit_log(actor_id,action,details) VALUES($1,'signup',jsonb_build_object('role',$2))",[u.id,role]);
+   await c.query("INSERT INTO platform_audit_log(actor_id,action,details) VALUES($1,'signup',jsonb_build_object('role',$2::text))",[u.id,role]);
    return {token:session,user:userView(u)};
   });
  }
@@ -279,7 +279,7 @@ async function dispatch(body:any,req:VercelRequest) {
    const existingTrial=await c.query("SELECT 1 FROM subscriptions s JOIN organiser_profiles op ON op.user_id=s.user_id WHERE lower(trim(op.institution))=lower(trim($1)) AND s.source='trial' LIMIT 1",[u.institution||""]);
    const existingPaid=await c.query("SELECT 1 FROM subscriptions WHERE user_id=$1 AND plan_code<>'free' AND status='active' AND (ends_at IS NULL OR ends_at>now()) LIMIT 1",[u.id]);
    if(!existingTrial.rows[0]&&!existingPaid.rows[0]) await createTrial(u.id,id,c);
-   await c.query("INSERT INTO platform_audit_log(actor_id,festival_id,action,details) VALUES($1,$2,'festival.create',jsonb_build_object('name',$3))",[u.id,id,name]);
+   await c.query("INSERT INTO platform_audit_log(actor_id,festival_id,action,details) VALUES($1,$2,'festival.create',jsonb_build_object('name',$3::text))",[u.id,id,name]);
    return {fest:{id,name}};
   });
  }
