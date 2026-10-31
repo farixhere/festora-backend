@@ -91,3 +91,49 @@ The 35 reducer bodies are now catalogued, but some called helper functions deter
 - Full request/response shapes for the 33 API actions.
 
 Do not design the final domain schema until these helper rules and the action response contracts are reconciled. This audit does not authorize any frontend changes, production changes or data migration.
+
+
+## Helper-rule audit (supporting reducer behavior)
+
+The following helper implementations were also inspected in the current frontend source.
+
+### Roles and registration scope
+- `ADM(m)` is true for roles `owner`, `org`, and `admin`.
+- `canReg(S,m,team)` allows admin-capable roles, or a `team` role whose `m.team` equals the candidate's team, provided registration is not closed.
+- Registration is closed when the global registration lock is true or when a configured closing date is earlier than the current date used by the frontend.
+- `marked(p)` means at least one judge submission exists in `p.subm`.
+- Backend should calculate the date using a consistent festival timezone. The frontend helper's date-only comparison is not a sufficient timezone specification.
+
+### Programme enrollment constraints
+- A candidate may only enroll in programmes matching their category.
+- Pending programmes with no marks are editable; any programme already marked or not pending is treated as fixed.
+- The frontend counts fixed programmes plus newly selected editable programmes against the configured per-candidate limit.
+- It rejects two selected/fixed programmes for the same candidate in the same schedule slot.
+- Schedule-slot identity is based on day and minute-of-day.
+- The exact error text is UI feedback, not a required backend response string.
+
+### Scoring and result calculation
+- Only judges whose `subm[judgeId]` is true are included in calculation.
+- For each candidate in the programme, the frontend calculates the arithmetic mean of submitted judge marks and rounds to one decimal place.
+- Rows are sorted by average descending. Equal averages share the same rank (competition ranking: e.g. 1, 1, 3).
+- Grade is determined from configured cutoffs A, B and C; default thresholds are A=80, B=65, C=50.
+- Points equal the configured rank points for the first three places plus the grade points.
+- Team points are accumulated only from published programme results.
+- This scoring rule should be covered by deterministic tests before implementation. Do not treat browser-computed scores as authoritative.
+
+### Scheduling helpers
+- Slot duration is configured in minutes; slots per day are calculated from (end - start) / slot duration, with a minimum of one.
+- `placeOne` finds the first slot not already used by another programme on the same stage.
+- `autoPlace` processes programmes in configured category order, then finds a slot with no same-stage collision and no shared participant collision.
+- The current helper clamps the displayed day to the configured maximum but continues increasing the minute value when it runs beyond the configured total slot capacity. This can produce an out-of-range minute on the final configured day if no valid slot remains. Treat this as a frontend edge-case/bug to guard against in the backend; do not reproduce invalid times.
+- The frontend has a separate conflict detector that reports same-stage or shared-participant collisions at a slot.
+
+### Identifier, media and public-site constants
+- IDs are normalized by stripping characters other than letters, digits, underscore and hyphen, then truncating to 24 characters. Some reducers further truncate IDs to 12 characters.
+- Allowed public modes are `open`, `results`, `code`, and `closed`.
+- The frontend colour palette currently contains `#1F78D1`, `#0B7A55`, `#6D2E8E`, and `#B3471D`; `site.color` stores the selected palette index.
+- Brand logo accepts PNG/JPEG/WebP base64 data URLs up to 46,000 characters. Candidate photo accepts JPEG base64 data URL up to 20,000 characters. Gallery photo accepts JPEG/PNG/WebP base64 data URL up to 420,000 characters.
+- These base64 limits are legacy frontend constraints. For the replacement backend, prefer object storage and persist a validated asset URL/reference, but retain the existing frontend's input/output contract during compatibility mode.
+
+### Audit boundary
+These helper rules complete the reducer-level business-rule extraction for the 35 operation types. Remaining contract work is now focused on the 33 top-level API actions: complete request/response fields, authentication/session lifecycle, payment-provider behavior, public read rules and sync acknowledgements. A further API caller audit is required before schema finalization.
