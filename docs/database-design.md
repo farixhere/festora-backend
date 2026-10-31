@@ -103,3 +103,8 @@ The existing `users`, `festivals`, `festival_memberships`, `sessions` and `opera
 - The new schema contains no imported user/festival/payment records. The original main branch was not changed.
 - A provider-payment-ID unique index was intentionally not added in this pass; payment idempotency is covered by the unique payment idempotency key and unique provider event ID. Add provider-specific constraints once the gateway contract is confirmed.
 - TypeScript compilation and full API integration tests have not yet been run. The Drizzle schema is a typed table map; the SQL migration remains authoritative for the full set of composite foreign keys and check constraints.
+
+
+## Tooling note
+
+The SQL migration is the source of truth for database constraints and indexes. The TypeScript Drizzle file provides table/column typing but does not yet mirror every foreign key and index one-for-one. Do not run `drizzle-kit generate` against this intermediate metadata; it could propose unwanted constraint changes. Before enabling schema generation, complete the Drizzle metadata parity pass and verify it against a fresh database introspection.
