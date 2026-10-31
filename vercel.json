@@ -3,5 +3,6 @@
     "api/**/*.ts": {
       "maxDuration": 10
     }
-  }
+  },
+  "outputDirectory": "public"
 }
