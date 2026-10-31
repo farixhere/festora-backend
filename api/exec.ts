@@ -183,7 +183,7 @@ async function dispatch(body:any,req:VercelRequest) {
  }
  if(action==="hit") {
   const k=text(body.k,30),v=text(body.v,80),f=text(body.f,80)||null;
-  if(!v||!["app","public"].includes(k)) return {ok:true};
+  if(!v||!["home","app","public"].includes(k)) return {ok:true};
   await pool.query("INSERT INTO analytics_visits(visitor_key,page_kind,festival_id) VALUES($1,$2,$3)",[v,k,f]);
   return {ok:true};
  }
@@ -351,8 +351,22 @@ async function dispatch(body:any,req:VercelRequest) {
  }
  if(action==="ownerStats") {
   const u=await actorFor(token);await requireOwner(u);
-  const [users,fests,visits]=await Promise.all([pool.query("SELECT count(*)::int n FROM users"),pool.query("SELECT count(*)::int n FROM festivals WHERE status<>'deleted'"),pool.query("SELECT count(*)::int n FROM analytics_visits")]);
-  return {users:users.rows[0].n,fests:fests.rows[0].n,visits:visits.rows[0].n,festivals:[]};
+  const [orgs,coupons,fests,users,total,today,periods,days,festList]=await Promise.all([
+   pool.query("SELECT count(*)::int AS n FROM users WHERE role IN ('org','owner')"),
+   pool.query("SELECT count(DISTINCT coupon_code)::int AS n FROM coupon_redemptions"),
+   pool.query("SELECT count(*)::int AS n FROM festivals WHERE status<>'deleted'"),
+   pool.query("SELECT m.role,count(*)::int AS n FROM festival_memberships m JOIN festivals f ON f.id=m.festival_id WHERE m.is_active=true AND f.status<>'deleted' GROUP BY m.role"),
+   pool.query("SELECT count(*)::int AS n FROM analytics_visits"),
+   pool.query("SELECT count(DISTINCT visitor_key)::int AS visitors,count(*) FILTER(WHERE page_kind='home')::int AS home,count(*) FILTER(WHERE page_kind='public')::int AS pub,count(*) FILTER(WHERE page_kind='app')::int AS app FROM analytics_visits WHERE day_bucket=(now() AT TIME ZONE 'Asia/Kolkata')::date"),
+   pool.query("SELECT count(DISTINCT visitor_key)::int AS visitors, count(*)::int AS views, count(DISTINCT visitor_key) FILTER(WHERE day_bucket >= (now() AT TIME ZONE 'Asia/Kolkata')::date-6)::int AS d7, count(DISTINCT visitor_key) FILTER(WHERE day_bucket >= (now() AT TIME ZONE 'Asia/Kolkata')::date-29)::int AS d30 FROM analytics_visits"),
+   pool.query("SELECT d::date::text AS date, count(*) FILTER(WHERE page_kind='home')::int AS home, count(*) FILTER(WHERE page_kind='public')::int AS pub FROM generate_series((now() AT TIME ZONE 'Asia/Kolkata')::date-13,(now() AT TIME ZONE 'Asia/Kolkata')::date,interval '1 day') d LEFT JOIN analytics_visits a ON a.day_bucket=d::date GROUP BY d ORDER BY d"),
+   pool.query("SELECT f.name,coalesce(u.display_name,u.username,'—') AS by,f.created_at::text AS created,(SELECT count(*)::int FROM festival_memberships m WHERE m.festival_id=f.id AND m.is_active=true) AS users,(SELECT count(*)::int FROM analytics_visits a WHERE a.festival_id=f.id AND a.page_kind='public') AS views FROM festivals f LEFT JOIN users u ON u.id=f.created_by WHERE f.status<>'deleted' ORDER BY f.created_at DESC LIMIT 100")
+  ]);
+  const roleCounts={team:0,judge:0,admin:0};
+  for(const row of users.rows){if(row.role==="team")roleCounts.team+=row.n;else if(row.role==="judge")roleCounts.judge+=row.n;else if(["owner","org","admin"].includes(row.role))roleCounts.admin+=row.n;}
+  return {orgs:orgs.rows[0].n,coupons:coupons.rows[0].n,fests:fests.rows[0].n,users:roleCounts,
+   visits:{today:today.rows[0],d7:periods.rows[0].d7,d30:periods.rows[0].d30,total:total.rows[0].n,days:days.rows},
+   festList:festList.rows};
  }
  if(action==="setSignup") {
   const u=await actorFor(token);await requireOwner(u);
