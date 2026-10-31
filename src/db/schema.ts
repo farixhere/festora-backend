@@ -68,7 +68,7 @@ export const emailOtpChallenges=pgTable("email_otp_challenges",{
 
 export const festivalTeams=pgTable("festival_teams",{
  festivalId:uuid("festival_id").notNull(),id:text("id").notNull(),name:text("name").notNull(),
- sortOrder:integer("sort_order").notNull().default(0),isActive:boolean("is_active").notNull().default(true),
+ sortOrder:integer("sort_order").notNull().default(0),isActive:boolean("is_active").notNull().default(true),color:text("color"),
  createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow()
 },t=>({pk:primaryKey({columns:[t.festivalId,t.id]})}));
 const festivalDictionary=(tableName:string)=>pgTable(tableName,{
@@ -82,7 +82,7 @@ export const festivalSubfestivals=festivalDictionary("festival_subfestivals");
 export const candidates=pgTable("candidates",{
  festivalId:uuid("festival_id").notNull(),id:text("id").notNull(),name:text("name").notNull(),
  teamId:text("team_id").notNull(),categoryId:text("category_id").notNull(),skills:jsonb("skills").notNull().default([]),
- photoUrl:text("photo_url"),legacyPhotoData:text("legacy_photo_data"),status:text("status").notNull().default("active"),
+ photoUrl:text("photo_url"),legacyPhotoData:text("legacy_photo_data"),chestNumber:integer("chest_number"),metadata:jsonb("metadata").notNull().default({}),status:text("status").notNull().default("active"),
  createdBy:uuid("created_by"),updatedBy:uuid("updated_by"),createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
  updatedAt:timestamp("updated_at",{withTimezone:true}).notNull().defaultNow()
 },t=>({pk:primaryKey({columns:[t.festivalId,t.id]}),teamIdx:index("candidates_team_idx").on(t.festivalId,t.teamId)}));
