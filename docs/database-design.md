@@ -92,3 +92,14 @@ The existing `users`, `festivals`, `festival_memberships`, `sessions` and `opera
 - It must first pass on a temporary Neon branch.
 - Applying it to the main Neon branch is a separate approval step after the test report is reviewed.
 - The live frontend URL and Apps Script deployment remain untouched.
+
+
+## Isolated migration validation (2026-10-31)
+
+- The 66 SQL statements in `drizzle/0001_festora_domain.sql` were executed together in one transaction on a disposable Neon branch cloned from the current main branch.
+- Neon returned success for all statements.
+- The branch contains 29 new domain tables in addition to the five original application tables (plus the Drizzle migration metadata table).
+- Inspected `operation_log`, `judge_marks`, `payments` and `festival_memberships`: expected columns, primary/unique indexes, role/team references and score/payment checks were present.
+- The new schema contains no imported user/festival/payment records. The original main branch was not changed.
+- A provider-payment-ID unique index was intentionally not added in this pass; payment idempotency is covered by the unique payment idempotency key and unique provider event ID. Add provider-specific constraints once the gateway contract is confirmed.
+- TypeScript compilation and full API integration tests have not yet been run. The Drizzle schema is a typed table map; the SQL migration remains authoritative for the full set of composite foreign keys and check constraints.
