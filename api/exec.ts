@@ -302,7 +302,10 @@ async function dispatch(body:any,req:VercelRequest) {
    const allowed=await pool.query("SELECT 1 FROM users target JOIN festival_memberships tm ON tm.user_id=target.id AND tm.is_active=true JOIN festival_memberships mine ON mine.festival_id=tm.festival_id AND mine.user_id=$1 AND mine.is_active=true WHERE target.username=$2 AND mine.role IN ('owner','org','admin') LIMIT 1",[u.id,target]);
    if(!allowed.rows[0])throw fail(403,"You cannot reset this user's password.");
   }
-  await pool.query("UPDATE users SET password_hash=$2,updated_at=now() WHERE username=$1",[target,passwordHash(next)]);
+  const changed=await pool.query("UPDATE users SET password_hash=$2,updated_at=now() WHERE username=$1 RETURNING id",[target,passwordHash(next)]);
+  if(!changed.rows[0])throw fail(404,"User not found.");
+  if(target===u.username) await pool.query("UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND id<>$2 AND revoked_at IS NULL",[changed.rows[0].id,u.session_id]);
+  else await pool.query("UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL",[changed.rows[0].id]);
   return {ok:true};
  }
  if(action==="claimPay") {
@@ -415,5 +418,5 @@ export default async function handler(req:VercelRequest,res:VercelResponse) {
  const body=req.body&&typeof req.body==="object"?req.body:{};
  if(typeof body.action!=="string"||!actions.has(body.action))return send(res,400,{error:"Unknown API action."});
  try { const out=await dispatch(body,req); return send(res,200,out); }
- catch(e:any){const status=e.status||500; if(status>=500)console.error("Festora API error",body.action,e.message);return send(res,status,{error:e.message||"The request could not be completed."});}
+ catch(e:any){const status=e.status||(e.code==="23505"?409:500); if(status>=500)console.error("Festora API error",body.action,e.message);return send(res,status,{error:e.message||"The request could not be completed."});}
 }
