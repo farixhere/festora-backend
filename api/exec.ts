@@ -135,8 +135,8 @@ async function dispatch(body:any,req:VercelRequest) {
    await c.query("SELECT pg_advisory_xact_lock(739281)");
    const signupSetting=await c.query("SELECT value FROM platform_settings WHERE key='signup_open'");
    if(signupSetting.rows[0]?.value===false) throw fail(403,"New account registration is currently closed.");
-   const existing=await c.query("SELECT count(*)::int AS n FROM users");
-   const role=existing.rows[0].n===0?"owner":"org";
+   const ownerExists=await c.query("SELECT EXISTS(SELECT 1 FROM users WHERE role='owner') AS has_owner");
+   const role=ownerExists.rows[0].has_owner?"org":"owner";
    const inserted=await c.query(`INSERT INTO users(username,email,password_hash,display_name,role,phone,institution,place,email_verified_at)
    VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()) RETURNING *`,[username,email,passwordHash(password),name,role,phone,inst,place]);
    const u=inserted.rows[0];
