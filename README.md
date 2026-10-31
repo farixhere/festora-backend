@@ -68,7 +68,7 @@ The staging API implements the frontend's `POST /api/exec` envelope and currentl
 - Visitor analytics and owner dashboard data.
 - Health endpoint and strict TypeScript build check.
 
-The festival snapshot and ordered operation log are the authoritative sync store today. The relational domain tables are created and seeded for plan reference data; full normalized projection writes and object-storage migration for large image assets remain follow-up work.
+The festival snapshot and ordered operation log preserve the current frontend sync contract. Each accepted operation now updates the normalized relational domain tables in the same database transaction. Gallery and candidate images are retained in legacy data-URI fields for compatibility; moving them to object storage remains a separate scalability task.
 
 ## Required staging configuration
 
