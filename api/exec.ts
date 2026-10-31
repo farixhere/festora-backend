@@ -245,7 +245,10 @@ async function dispatch(body:any,req:VercelRequest) {
   });
  }
  if(action==="deleteUser") {
-  const u=await actorFor(token),fest=text(body.fest,80),username=text(body.u,30);await adminForFest(u,fest);
+  const u=await actorFor(token),username=text(body.u,30);
+  const target=await pool.query("SELECT tm.festival_id FROM users target JOIN festival_memberships tm ON tm.user_id=target.id AND tm.is_active=true JOIN festival_memberships mine ON mine.festival_id=tm.festival_id AND mine.user_id=$1 AND mine.is_active=true WHERE target.username=$2 AND mine.role IN ('owner','org','admin') ORDER BY tm.created_at LIMIT 1",[u.id,username]);
+  if(!target.rows[0]) throw fail(403,"You cannot remove this login from the selected festival.");
+  const fest=target.rows[0].festival_id;
   await pool.query("UPDATE festival_memberships SET is_active=false WHERE festival_id=$1 AND user_id=(SELECT id FROM users WHERE username=$2)",[fest,username]);
   return {users:await loadUsers(fest)};
  }
@@ -253,7 +256,10 @@ async function dispatch(body:any,req:VercelRequest) {
   const u=await actorFor(token),target=text(body.u,30),next=String(body.p||"");
   if(next.length<8)throw fail(400,"Passwords must be at least 8 characters.");
   if(target===u.username&&body.old) {if(!passwordOK(String(body.old),u.password_hash))throw fail(400,"Your current password is incorrect.");}
-  else {if(!body.fest)throw fail(400,"A festival is required to reset another user's password.");await adminForFest(u,text(body.fest,80));}
+  else {
+   const allowed=await pool.query("SELECT 1 FROM users target JOIN festival_memberships tm ON tm.user_id=target.id AND tm.is_active=true JOIN festival_memberships mine ON mine.festival_id=tm.festival_id AND mine.user_id=$1 AND mine.is_active=true WHERE target.username=$2 AND mine.role IN ('owner','org','admin') LIMIT 1",[u.id,target]);
+   if(!allowed.rows[0])throw fail(403,"You cannot reset this user's password.");
+  }
   await pool.query("UPDATE users SET password_hash=$2,updated_at=now() WHERE username=$1",[target,passwordHash(next)]);
   return {ok:true};
  }
