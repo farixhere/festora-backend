@@ -5,7 +5,10 @@ const envSchema = z.object({
   DATABASE_URL_UNPOOLED: z.string().url().optional(),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
   AUTH_SECRET: z.string().min(32).optional(),
-  APP_ENV: z.string().default("development")
+  APP_ENV: z.string().default("development"),
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),
+  PUBLIC_APP_URL: z.string().url().optional()
 });
 
 export const env = envSchema.parse(process.env);
