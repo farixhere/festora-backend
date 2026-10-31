@@ -47,7 +47,7 @@ async function getPlan(userId:string,fest?:string,client:any=pool) {
  }
  if(!sub) return {tier:"free",ends:new Date(Date.now()+7*86400000).toISOString(),maxStudents:40,paid:false,locked:false,everPaid:false,paidUntil:null};
  if(sub.status==="locked") return {tier:"locked",ends:sub.ends_at,maxStudents:40,paid:false,locked:true,everPaid:false,paidUntil:sub.ends_at};
- if(sub.ends_at && new Date(sub.ends_at).getTime()<Date.now()) return {tier:"expired",ends:sub.ends_at,maxStudents:40,paid:false,locked:false,everPaid:sub.plan_code!=="free",paidUntil:sub.ends_at};
+ if(["expired","cancelled","past_due"].includes(sub.status) || (sub.ends_at && new Date(sub.ends_at).getTime()<Date.now())) return {tier:"expired",ends:sub.ends_at,maxStudents:40,paid:false,locked:false,everPaid:sub.plan_code!=="free",paidUntil:sub.ends_at};
  const tier=sub.plan_code==="free"?"free":"paid";
  return {tier,ends:sub.ends_at?new Date(sub.ends_at).toISOString():null,maxStudents:tier==="free"?40:999999,plan:sub.plan_code||"free",paid:tier==="paid",locked:false,everPaid:tier==="paid",paidUntil:sub.ends_at?new Date(sub.ends_at).toISOString():null};
 }
@@ -166,6 +166,7 @@ async function dispatch(body:any,req:VercelRequest) {
    const coupon=q.rows[0];
    const found=await c.query("SELECT u.* FROM coupon_redemptions cr JOIN users u ON u.id=cr.user_id WHERE cr.coupon_code=$1 ORDER BY cr.first_redeemed_at LIMIT 1",[coupon.code]);
    let user=found.rows[0];
+   if(user&&(!user.is_active||user.account_locked_at))throw fail(403,"This coupon account is locked. Contact Festora support.");
    if(!user){
     const used=await c.query("SELECT count(*)::int AS n FROM coupon_redemptions WHERE coupon_code=$1",[coupon.code]);
     if(coupon.max_redemptions&&used.rows[0].n>=coupon.max_redemptions)throw fail(400,"This coupon has already been used.");
@@ -317,7 +318,10 @@ async function dispatch(body:any,req:VercelRequest) {
   return transaction(async c=>{
    const cr=await c.query("SELECT * FROM coupons WHERE upper(code)=upper($1) AND is_active=true AND (starts_at IS NULL OR starts_at<=now()) AND (expires_at IS NULL OR expires_at>now()) FOR UPDATE",[code]);
    if(!cr.rows[0])throw fail(400,"That coupon is invalid or expired.");
-   const coupon=cr.rows[0],count=await c.query("SELECT count(*)::int AS n FROM coupon_redemptions WHERE coupon_code=$1",[coupon.code]);
+   const coupon=cr.rows[0];
+   const already=await c.query("SELECT 1 FROM coupon_redemptions WHERE coupon_code=$1 AND user_id=$2",[coupon.code,u.id]);
+   if(already.rows[0]) return {plan:await getPlan(u.id,null,c)};
+   const count=await c.query("SELECT count(*)::int AS n FROM coupon_redemptions WHERE coupon_code=$1",[coupon.code]);
    if(coupon.max_redemptions&&count.rows[0].n>=coupon.max_redemptions)throw fail(400,"This coupon has reached its redemption limit.");
    const until=addMonths(new Date(),coupon.duration_months);
    await c.query("INSERT INTO coupon_redemptions(coupon_code,user_id,entitlement_until) VALUES($1,$2,$3)",[coupon.code,u.id,until]);
