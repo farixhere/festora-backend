@@ -43,7 +43,7 @@ async function getPlan(userId:string,fest?:string,client:any=pool) {
  let sub=r.rows[0];
  if(!sub && fest) {
   const previousTrial=await client.query("SELECT * FROM subscriptions WHERE user_id=$1 AND source='trial' ORDER BY created_at LIMIT 1",[userId]);
-  if(previousTrial.rows[0]) sub=previousTrial.rows[0];
+  if(previousTrial.rows[0]) return {tier:"expired",ends:previousTrial.rows[0].ends_at,maxStudents:40,paid:false,locked:false,everPaid:false,paidUntil:previousTrial.rows[0].ends_at};
  }
  if(!sub) return {tier:"free",ends:new Date(Date.now()+7*86400000).toISOString(),maxStudents:40,paid:false,locked:false,everPaid:false,paidUntil:null};
  if(sub.status==="locked") return {tier:"locked",ends:sub.ends_at,maxStudents:40,paid:false,locked:true,everPaid:false,paidUntil:sub.ends_at};
@@ -192,12 +192,14 @@ async function dispatch(body:any,req:VercelRequest) {
   const u=await actorFor(token);
   if(action==="myPlan") {
    const p=await getPlan(u.id), f=await userFests(u);
-   const pr=await pool.query("SELECT code,name,duration_months AS months,(amount_minor::numeric/100)::float AS price FROM plans WHERE is_active=true ORDER BY display_order");
+   const perFestival=[];
+   for(const festival of f){const fp=await getPlan(u.id,festival.id);perFestival.push({name:festival.name,tier:fp.tier,ends:fp.ends});}
+   const pr=await pool.query("SELECT code,name,duration_months AS months,(amount_minor::numeric/100)::float AS price FROM plans WHERE is_active=true AND code NOT IN ('free','coupon') ORDER BY display_order");
    const pay=await pool.query("SELECT public_ref AS ref,created_at AS created,plan_code AS plan,(amount_minor::numeric/100)::float AS amount,status FROM payments WHERE user_id=$1 ORDER BY created_at DESC",[u.id]);
    const cfg=await pool.query("SELECT key,value FROM platform_settings WHERE key IN ('upi_id','online_payments_enabled')");
    const settings=Object.fromEntries(cfg.rows.map((x:any)=>[x.key,x.value]));
    const plans=Object.fromEntries(pr.rows.map((x:any)=>[x.code,x]));
-   return {plan:p,fests:f.map((x:any)=>({name:x.name,tier:p.tier,ends:p.ends})),plans,upi:settings.upi_id||"",online:settings.online_payments_enabled===true,coupon:!!u.metadata?.couponLogin,trialHours:168,trialStudents:40,payments:pay.rows};
+   return {plan:p,fests:perFestival,plans,upi:settings.upi_id||"",online:settings.online_payments_enabled===true,coupon:!!u.metadata?.couponLogin,trialHours:168,trialStudents:40,payments:pay.rows};
   }
   const fests=await userFests(u);
   const plan=fests.length?await getPlan(u.id,fests[0].id):await getPlan(u.id);
