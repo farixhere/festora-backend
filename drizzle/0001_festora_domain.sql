@@ -1,5 +1,5 @@
 -- Festora v1 domain schema. Additive only: no drops, truncates or data replacement.
--- Keep festival-local opaque IDs as text; public.users/festivals retain UUID primary keys.
+-- Keep festival-local opaque IDs as text; global users/festivals retain UUID primary keys.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 --> statement-breakpoint
 ALTER TABLE public.users
@@ -371,4 +371,3 @@ CREATE INDEX platform_audit_target_idx ON platform_audit_log(target_user_id,crea
 CREATE INDEX platform_audit_festival_idx ON platform_audit_log(festival_id,created_at DESC);
 --> statement-breakpoint
 CREATE INDEX festivals_created_at_idx ON festivals(created_at DESC);
---> statement-breakpoint
