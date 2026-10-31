@@ -386,11 +386,19 @@ async function dispatch(body:any,req:VercelRequest) {
   const ref=text(body.ref,100),ok=!!body.ok;
   return transaction(async c=>{
    const p=await c.query("SELECT * FROM payments WHERE public_ref=$1 FOR UPDATE",[ref]);if(!p.rows[0])throw fail(404,"Payment not found.");
-   if(ok){await c.query("UPDATE payments SET status='paid',paid_at=now(),reviewed_by=$2,reviewed_at=now(),updated_at=now() WHERE id=$1",[p.rows[0].id,u.id]);
+   if(ok){
+    await c.query("UPDATE payments SET status='paid',paid_at=now(),reviewed_by=$2,reviewed_at=now(),updated_at=now() WHERE id=$1",[p.rows[0].id,u.id]);
     const plan=await c.query("SELECT duration_months FROM plans WHERE code=$1",[p.rows[0].plan_code]);
-    await c.query("INSERT INTO subscriptions(user_id,plan_code,status,starts_at,ends_at,source) VALUES($1,$2,'active',now(),now()+($3::text||' months')::interval,'manual')",[p.rows[0].user_id,p.rows[0].plan_code,plan.rows[0]?.duration_months||1]);
-   }else await c.query("UPDATE payments SET status='rejected',reviewed_by=$2,reviewed_at=now(),updated_at=now() WHERE id=$1",[p.rows[0].id,u.id]);
-   return ownerAccounts();
+    const months=plan.rows[0]?.duration_months||1;
+    const active=await c.query("SELECT id FROM subscriptions WHERE user_id=$1 AND status='active' AND plan_code<>'free' AND (ends_at IS NULL OR ends_at>now()) ORDER BY ends_at DESC NULLS FIRST LIMIT 1 FOR UPDATE",[p.rows[0].user_id]);
+    if(active.rows[0]) await c.query("UPDATE subscriptions SET plan_code=$2,ends_at=coalesce(ends_at,now())+($3::text||' months')::interval,status='active',updated_at=now() WHERE id=$1",[active.rows[0].id,p.rows[0].plan_code,months]);
+    else await c.query("INSERT INTO subscriptions(user_id,plan_code,status,starts_at,ends_at,source) VALUES($1,$2,'active',now(),now()+($3::text||' months')::interval,'manual')",[p.rows[0].user_id,p.rows[0].plan_code,months]);
+    await c.query("UPDATE users SET account_locked_at=NULL WHERE id=$1",[p.rows[0].user_id]);
+   } else {
+    await c.query("UPDATE payments SET status='rejected',reviewed_by=$2,reviewed_at=now(),updated_at=now() WHERE id=$1",[p.rows[0].id,u.id]);
+    if(body.lock) await c.query("UPDATE users SET account_locked_at=now() WHERE id=$1",[p.rows[0].user_id]);
+   }
+   return ownerAccounts(c);
   });
  }
  throw fail(501,"This action is not implemented yet.");
