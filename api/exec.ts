@@ -151,8 +151,9 @@ async function syncFestivalRelations(c:any,fest:string,state:any,actorId:string)
  for(const x of appeals) {
   const p=programmes.find((v:any)=>String(v.id)===String(x.pid));if(!p)continue;
   const candidate=candidates.find((v:any)=>p.parts?.includes(v.id)&&String(v.team)===String(x.team));if(!candidate)continue;
-  const submitter=memberships.rows.find((v:any)=>String(v.username)===String(x.by||""))?.user_id||actorId;
-  await q("INSERT INTO programme_appeals(festival_id,id,programme_id,candidate_id,team_id,reason,status,submitted_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(festival_id,id) DO UPDATE SET reason=EXCLUDED.reason,status=EXCLUDED.status",[fest,String(x.id),String(x.pid),String(candidate.id),String(x.team),String(x.reason||"Appeal").slice(0,500),["pending","accepted","rejected"].includes(x.status)?x.status:"pending",submitter]);
+  const submitter=memberships.rows.find((v:any)=>String(v.username)===String(x.by||""))?.user_id||null;
+  const decider=memberships.rows.find((v:any)=>String(v.username)===String(x.decidedBy||""))?.user_id||null;
+  await q("INSERT INTO programme_appeals(festival_id,id,programme_id,candidate_id,team_id,reason,status,submitted_by,decided_by,decision_note,decided_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(festival_id,id) DO UPDATE SET reason=EXCLUDED.reason,status=EXCLUDED.status,decided_by=EXCLUDED.decided_by,decision_note=EXCLUDED.decision_note,decided_at=EXCLUDED.decided_at",[fest,String(x.id),String(x.pid),String(candidate.id),String(x.team),String(x.reason||"Appeal").slice(0,500),["pending","accepted","rejected"].includes(x.status)?x.status:"pending",submitter,decider,x.decisionNote||null,x.decidedBy?new Date():null]);
  }
  for(const x of (state.news||[])) await q("INSERT INTO festival_announcements(festival_id,id,body,created_by) VALUES($1,$2,$3,$4) ON CONFLICT(festival_id,id) DO UPDATE SET body=EXCLUDED.body",[fest,String(x.id),String(x.txt||"").slice(0,300),actorId]);
  for(const x of (state.notifs||[])) await q("INSERT INTO festival_notifications(festival_id,id,body,recipient,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(festival_id,id) DO UPDATE SET body=EXCLUDED.body,recipient=EXCLUDED.recipient",[fest,String(x.id),String(x.txt||"").slice(0,300),String(x.to||"all"),actorId]);
