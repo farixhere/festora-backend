@@ -39,15 +39,17 @@ async function createSession(userId:string,client:any=pool) {
  return token;
 }
 async function getPlan(userId:string,fest?:string,client:any=pool) {
- const r=await client.query(`SELECT s.*,p.name AS plan_name FROM subscriptions s LEFT JOIN plans p ON p.code=s.plan_code
- WHERE s.user_id=$1 AND ($2::uuid IS NULL OR s.trial_festival_id=$2 OR s.trial_festival_id IS NULL)
- ORDER BY CASE WHEN s.trial_festival_id=$2 THEN 0 ELSE 1 END,s.created_at DESC LIMIT 1`,[userId,fest||null]);
- const s=r.rows[0];
- if(!s) return {tier:"free",ends:new Date(Date.now()+7*86400000).toISOString(),maxStudents:40,paid:false,locked:false,everPaid:false,paidUntil:null};
- if(s.status==="locked") return {tier:"locked",ends:s.ends_at,maxStudents:40,paid:false,locked:true,everPaid:false,paidUntil:s.ends_at};
- if(s.ends_at && new Date(s.ends_at).getTime()<Date.now()) return {tier:"expired",ends:s.ends_at,maxStudents:40,paid:false,locked:false,everPaid:s.plan_code!=="free",paidUntil:s.ends_at};
- const tier=s.plan_code==="free"?"free":"paid";
- return {tier,ends:s.ends_at?new Date(s.ends_at).toISOString():null,maxStudents:tier==="free"?40:999999,plan:s.plan_code||"free",paid:tier==="paid",locked:false,everPaid:tier==="paid",paidUntil:s.ends_at?new Date(s.ends_at).toISOString():null};
+ const r=await client.query("SELECT s.*,p.name AS plan_name FROM subscriptions s LEFT JOIN plans p ON p.code=s.plan_code WHERE s.user_id=$1 AND ($2::uuid IS NULL OR s.trial_festival_id=$2 OR (s.trial_festival_id IS NULL AND s.plan_code<>'free')) ORDER BY CASE WHEN s.plan_code='free' THEN 1 ELSE 0 END,s.created_at DESC LIMIT 1",[userId,fest||null]);
+ let sub=r.rows[0];
+ if(!sub && fest) {
+  const previousTrial=await client.query("SELECT * FROM subscriptions WHERE user_id=$1 AND source='trial' ORDER BY created_at LIMIT 1",[userId]);
+  if(previousTrial.rows[0]) sub=previousTrial.rows[0];
+ }
+ if(!sub) return {tier:"free",ends:new Date(Date.now()+7*86400000).toISOString(),maxStudents:40,paid:false,locked:false,everPaid:false,paidUntil:null};
+ if(sub.status==="locked") return {tier:"locked",ends:sub.ends_at,maxStudents:40,paid:false,locked:true,everPaid:false,paidUntil:sub.ends_at};
+ if(sub.ends_at && new Date(sub.ends_at).getTime()<Date.now()) return {tier:"expired",ends:sub.ends_at,maxStudents:40,paid:false,locked:false,everPaid:sub.plan_code!=="free",paidUntil:sub.ends_at};
+ const tier=sub.plan_code==="free"?"free":"paid";
+ return {tier,ends:sub.ends_at?new Date(sub.ends_at).toISOString():null,maxStudents:tier==="free"?40:999999,plan:sub.plan_code||"free",paid:tier==="paid",locked:false,everPaid:tier==="paid",paidUntil:sub.ends_at?new Date(sub.ends_at).toISOString():null};
 }
 async function userFests(user:any,client:any=pool) {
  const r=await client.query(`SELECT f.id,f.name,f.status,f.institution,f.created_at,m.role,m.team_id
@@ -210,7 +212,9 @@ async function dispatch(body:any,req:VercelRequest) {
    await c.query("INSERT INTO festivals(id,name,slug,created_by,institution,data,settings) VALUES($1,$2,$3,$4,$5,$6,'{}')",[id,name,slug,u.id,u.institution||null,JSON.stringify(state)]);
    await c.query("INSERT INTO festival_memberships(festival_id,user_id,role,display_name) VALUES($1,$2,'org',$3)",[id,u.id,u.display_name||u.username]);
    await c.query("INSERT INTO festival_counters(festival_id,last_seq) VALUES($1,0)",[id]);
-   await createTrial(u.id,id,c);
+   const existingTrial=await c.query("SELECT 1 FROM subscriptions WHERE user_id=$1 AND source='trial' LIMIT 1",[u.id]);
+   const existingPaid=await c.query("SELECT 1 FROM subscriptions WHERE user_id=$1 AND plan_code<>'free' AND status='active' AND (ends_at IS NULL OR ends_at>now()) LIMIT 1",[u.id]);
+   if(!existingTrial.rows[0]&&!existingPaid.rows[0]) await createTrial(u.id,id,c);
    await c.query("INSERT INTO platform_audit_log(actor_id,festival_id,action,details) VALUES($1,$2,'festival.create',jsonb_build_object('name',$3))",[u.id,id,name]);
    return {fest:{id,name}};
   });
@@ -324,7 +328,7 @@ async function dispatch(body:any,req:VercelRequest) {
   const u=await actorFor(token);await requireOwner(u);
   const code=text(body.code,32).toUpperCase(),label=text(body.label,80),months=Math.max(1,Math.min(24,Number(body.months)||1));
   if(!/^[A-Z0-9_-]{4,32}$/.test(code)||!label)throw fail(400,"Enter a valid coupon code and label.");
-  await pool.query("INSERT INTO coupons(code,label,duration_months,created_by) VALUES($1,$2,$3,$4)",[code,label,months,u.id]);
+  await pool.query("INSERT INTO coupons(code,label,duration_months,max_redemptions,created_by) VALUES($1,$2,$3,1,$4)",[code,label,months,u.id]);
   return refreshCoupons();
  }
  if(action==="setCoupon") {
