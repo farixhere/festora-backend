@@ -108,6 +108,8 @@ async function dispatch(body:any,req:VercelRequest) {
  const action=body.action, token=text(body.token,500);
  if(action==="sendOtp") {
   const email=text(body.email,254).toLowerCase();
+  const signupSetting=await pool.query("SELECT value FROM platform_settings WHERE key='signup_open'");
+  if(signupSetting.rows[0]?.value===false) throw fail(403,"New account registration is currently closed.");
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail(400,"Enter a valid email address.");
   if(!env.RESEND_API_KEY || !env.EMAIL_FROM || !env.AUTH_SECRET) throw fail(503,"Email verification is not configured yet. Festora needs its email sender settings before accounts can be created.");
   const recent=await pool.query("SELECT count(*)::int AS n FROM email_otp_challenges WHERE email=$1 AND created_at>now()-interval '15 minutes'",[email]);
@@ -128,6 +130,9 @@ async function dispatch(body:any,req:VercelRequest) {
    const ch=challenge.rows[0]; const expected=Buffer.from(ch.code_hash); const actual=Buffer.from(otpHash(email,otp));
    if(ch.attempts>=ch.max_attempts) throw fail(429,"Too many incorrect codes. Request a new one.");
    if(expected.length!==actual.length||!timingSafeEqual(expected,actual)){await c.query("UPDATE email_otp_challenges SET attempts=attempts+1 WHERE id=$1",[ch.id]);throw fail(400,"The verification code is incorrect.");}
+   await c.query("SELECT pg_advisory_xact_lock(739281)");
+   const signupSetting=await c.query("SELECT value FROM platform_settings WHERE key='signup_open'");
+   if(signupSetting.rows[0]?.value===false) throw fail(403,"New account registration is currently closed.");
    const existing=await c.query("SELECT count(*)::int AS n FROM users");
    const role=existing.rows[0].n===0?"owner":"org";
    const inserted=await c.query(`INSERT INTO users(username,email,password_hash,display_name,role,phone,institution,place,email_verified_at)
@@ -150,7 +155,29 @@ async function dispatch(body:any,req:VercelRequest) {
   return {token:session,user:userView(u,m)};
  }
  if(action==="logout") { if(token) await pool.query("UPDATE sessions SET revoked_at=now() WHERE token_hash=$1 AND revoked_at IS NULL",[hash(token)]); return {ok:true}; }
- if(action==="couponLogin") throw fail(400,"Coupon login is not enabled. Sign in to your organiser account and redeem the coupon from your plan page.");
+ if(action==="couponLogin") {
+  const code=text(body.code,40).toUpperCase();
+  if(!code)throw fail(400,"Enter your coupon ID.");
+  return transaction(async c=>{
+   const q=await c.query("SELECT * FROM coupons WHERE upper(code)=upper($1) AND is_active=true AND (starts_at IS NULL OR starts_at<=now()) AND (expires_at IS NULL OR expires_at>now()) FOR UPDATE",[code]);
+   if(!q.rows[0])throw fail(400,"That coupon ID is invalid or expired.");
+   const coupon=q.rows[0];
+   const found=await c.query("SELECT u.* FROM coupon_redemptions cr JOIN users u ON u.id=cr.user_id WHERE cr.coupon_code=$1 ORDER BY cr.first_redeemed_at LIMIT 1",[coupon.code]);
+   let user=found.rows[0];
+   if(!user){
+    const used=await c.query("SELECT count(*)::int AS n FROM coupon_redemptions WHERE coupon_code=$1",[coupon.code]);
+    if(coupon.max_redemptions&&used.rows[0].n>=coupon.max_redemptions)throw fail(400,"This coupon has already been used.");
+    const username="coupon_"+randomBytes(6).toString("hex");
+    const created=await c.query("INSERT INTO users(username,display_name,role,metadata,email_verified_at) VALUES($1,$2,'org',$3,now()) RETURNING *",[username,coupon.label,JSON.stringify({couponLogin:true})]);
+    user=created.rows[0];
+    const until=addMonths(new Date(),coupon.duration_months);
+    await c.query("INSERT INTO coupon_redemptions(coupon_code,user_id,entitlement_until) VALUES($1,$2,$3)",[coupon.code,user.id,until]);
+    await c.query("INSERT INTO subscriptions(user_id,plan_code,status,starts_at,ends_at,source) VALUES($1,'coupon','active',now(),$2,'coupon')",[user.id,until]);
+   }
+   const session=await createSession(user.id,c);
+   return {token:session,user:userView(user)};
+  });
+ }
  if(action==="hit") {
   const k=text(body.k,30),v=text(body.v,80),f=text(body.f,80)||null;
   if(!v||!["app","public"].includes(k)) return {ok:true};
