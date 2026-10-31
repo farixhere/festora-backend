@@ -122,8 +122,8 @@ const R={
   unpublish(S,a,m,op){if(!ADM(m)||S.locks.results)return;const p=pOf(S,a.pid);if(p&&p.status==="published"){p.status="verified";addLog(S,m,`${p.n}: result withdrawn`);addNote(S,m,op.cid,`${p.n}: result temporarily withdrawn`)}},
   appeal(S,a,m,op){const p=pOf(S,a.pid);if(!p||p.status!=="published"||m.role!=="team"||!a.id||S.appeals.some(x=>x.id===a.id))return;
     if(!p.parts.some(c=>(cOf(S,c)||{}).team===m.team))return;const reason=String(a.reason||"").trim().slice(0,500);if(!reason)return;
-    S.appeals.unshift({id:sid(a.id),pid:p.id,team:m.team,reason,status:"pending",t:m.t});addNote(S,m,op.cid,`${p.n}: appeal received from team ${teamName(S,m.team)}`,"admin");addLog(S,m,`Team ${teamName(S,m.team)} filed an appeal`)},
-  decide(S,a,m,op){if(!ADM(m))return;const x=S.appeals.find(y=>y.id===a.id);if(!x||x.status!=="pending")return;x.status=a.ok?"accepted":"rejected";const p=pOf(S,x.pid);
+    S.appeals.unshift({id:sid(a.id),pid:p.id,team:m.team,reason,status:"pending",t:m.t,by:m.u});addNote(S,m,op.cid,`${p.n}: appeal received from team ${teamName(S,m.team)}`,"admin");addLog(S,m,`Team ${teamName(S,m.team)} filed an appeal`)},
+  decide(S,a,m,op){if(!ADM(m))return;const x=S.appeals.find(y=>y.id===a.id);if(!x||x.status!=="pending")return;x.status=a.ok?"accepted":"rejected";x.decidedBy=m.u;x.decisionNote=String(a.note||"").slice(0,300);const p=pOf(S,x.pid);
     if(a.ok&&p&&p.status==="published")p.status="scored";addNote(S,m,op.cid,`${p?p.n:"Appeal"}: appeal ${a.ok?"accepted, result under review":"rejected"}`,x.team);addLog(S,m,`${p?p.n+": ":""}appeal ${a.ok?"accepted":"rejected"}`)},
   news(S,a,m){if(!ADM(m))return;const txt=String(a.txt||"").trim().slice(0,300);if(txt&&sid(a.id))S.news.unshift({id:sid(a.id),t:m.t,txt})},
   delNews(S,a,m){if(ADM(m))S.news=S.news.filter(x=>x.id!==a.id)},
