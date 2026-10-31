@@ -65,18 +65,18 @@ export const emailOtpChallenges=pgTable("email_otp_challenges",{
  maxAttempts:integer("max_attempts").notNull().default(5),createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow()
 });
 
-const dictColumns={
- festivalId:uuid("festival_id").notNull(),id:text("id").notNull(),name:text("name").notNull(),
- sortOrder:integer("sort_order").notNull().default(0),metadata:jsonb("metadata").notNull().default({})
-};
 export const festivalTeams=pgTable("festival_teams",{
  festivalId:uuid("festival_id").notNull(),id:text("id").notNull(),name:text("name").notNull(),
  sortOrder:integer("sort_order").notNull().default(0),isActive:boolean("is_active").notNull().default(true),
  createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow()
 },t=>({pk:primaryKey({columns:[t.festivalId,t.id]})}));
-export const festivalCategories=pgTable("festival_categories",{...dictColumns},t=>({pk:primaryKey({columns:[t.festivalId,t.id]})}));
-export const festivalStages=pgTable("festival_stages",{...dictColumns},t=>({pk:primaryKey({columns:[t.festivalId,t.id]})}));
-export const festivalSubfestivals=pgTable("festival_subfestivals",{...dictColumns},t=>({pk:primaryKey({columns:[t.festivalId,t.id]})}));
+const festivalDictionary=(tableName:string)=>pgTable(tableName,{
+ festivalId:uuid("festival_id").notNull(),id:text("id").notNull(),name:text("name").notNull(),
+ sortOrder:integer("sort_order").notNull().default(0),metadata:jsonb("metadata").notNull().default({})
+},t=>({pk:primaryKey({columns:[t.festivalId,t.id]})}));
+export const festivalCategories=festivalDictionary("festival_categories");
+export const festivalStages=festivalDictionary("festival_stages");
+export const festivalSubfestivals=festivalDictionary("festival_subfestivals");
 
 export const candidates=pgTable("candidates",{
  festivalId:uuid("festival_id").notNull(),id:text("id").notNull(),name:text("name").notNull(),
