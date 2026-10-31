@@ -43,11 +43,11 @@ async function getPlan(userId:string,fest?:string,client:any=pool) {
  WHERE s.user_id=$1 AND ($2::uuid IS NULL OR s.trial_festival_id=$2 OR s.trial_festival_id IS NULL)
  ORDER BY CASE WHEN s.trial_festival_id=$2 THEN 0 ELSE 1 END,s.created_at DESC LIMIT 1`,[userId,fest||null]);
  const s=r.rows[0];
- if(!s) return {tier:"free",ends:new Date(Date.now()+7*86400000).toISOString(),maxStudents:40};
- if(s.status==="locked") return {tier:"locked",ends:s.ends_at,maxStudents:40};
- if(s.ends_at && new Date(s.ends_at).getTime()<Date.now()) return {tier:"expired",ends:s.ends_at,maxStudents:40};
+ if(!s) return {tier:"free",ends:new Date(Date.now()+7*86400000).toISOString(),maxStudents:40,paid:false,locked:false,everPaid:false,paidUntil:null};
+ if(s.status==="locked") return {tier:"locked",ends:s.ends_at,maxStudents:40,paid:false,locked:true,everPaid:false,paidUntil:s.ends_at};
+ if(s.ends_at && new Date(s.ends_at).getTime()<Date.now()) return {tier:"expired",ends:s.ends_at,maxStudents:40,paid:false,locked:false,everPaid:s.plan_code!=="free",paidUntil:s.ends_at};
  const tier=s.plan_code==="free"?"free":"paid";
- return {tier,ends:s.ends_at?new Date(s.ends_at).toISOString():null,maxStudents:tier==="free"?40:999999,plan:s.plan_code||"free"};
+ return {tier,ends:s.ends_at?new Date(s.ends_at).toISOString():null,maxStudents:tier==="free"?40:999999,plan:s.plan_code||"free",paid:tier==="paid",locked:false,everPaid:tier==="paid",paidUntil:s.ends_at?new Date(s.ends_at).toISOString():null};
 }
 async function userFests(user:any,client:any=pool) {
  const r=await client.query(`SELECT f.id,f.name,f.status,f.institution,f.created_at,m.role,m.team_id
@@ -161,7 +161,15 @@ async function dispatch(body:any,req:VercelRequest) {
  if(action==="buy"||action==="checkPay") throw fail(503,"Online checkout is not configured yet. Manual UPI claims are available until a payment provider is connected.");
  if(action==="fests"||action==="myPlan") {
   const u=await actorFor(token);
-  if(action==="myPlan") return {plan:await getPlan(u.id)};
+  if(action==="myPlan") {
+   const p=await getPlan(u.id), f=await userFests(u);
+   const pr=await pool.query("SELECT code,name,duration_months AS months,(amount_minor::numeric/100)::float AS price FROM plans WHERE is_active=true ORDER BY display_order");
+   const pay=await pool.query("SELECT public_ref AS ref,created_at AS created,plan_code AS plan,(amount_minor::numeric/100)::float AS amount,status FROM payments WHERE user_id=$1 ORDER BY created_at DESC",[u.id]);
+   const cfg=await pool.query("SELECT key,value FROM platform_settings WHERE key IN ('upi_id','online_payments_enabled')");
+   const settings=Object.fromEntries(cfg.rows.map((x:any)=>[x.key,x.value]));
+   const plans=Object.fromEntries(pr.rows.map((x:any)=>[x.code,x]));
+   return {plan:p,fests:f.map((x:any)=>({name:x.name,tier:p.tier,ends:p.ends})),plans,upi:settings.upi_id||"",online:settings.online_payments_enabled===true,coupon:!!u.metadata?.couponLogin,trialHours:168,trialStudents:40,payments:pay.rows};
+  }
   const fests=await userFests(u);
   const plan=fests.length?await getPlan(u.id,fests[0].id):await getPlan(u.id);
   return {user:userView(u),fests,plan,db:""};
