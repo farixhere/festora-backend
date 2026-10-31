@@ -1,8 +1,8 @@
 -- Festora v1 domain schema. Additive only: no drops, truncates or data replacement.
--- Keep festival-local opaque IDs as text; users/festivals retain UUID primary keys.
+-- Keep festival-local opaque IDs as text; "users"/festivals retain UUID primary keys.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-ALTER TABLE users
+ALTER TABLE "users"
  ADD COLUMN IF NOT EXISTS phone text,
  ADD COLUMN IF NOT EXISTS institution text,
  ADD COLUMN IF NOT EXISTS place text,
@@ -48,7 +48,7 @@ INSERT INTO festival_counters(festival_id,last_seq)
  SELECT id,0 FROM festivals ON CONFLICT DO NOTHING;
 
 CREATE TABLE organiser_profiles (
- user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ user_id uuid PRIMARY KEY REFERENCES "users"(id) ON DELETE CASCADE,
  institution text NOT NULL, phone text, place text,
  signup_source text NOT NULL DEFAULT 'web',
  created_at timestamptz NOT NULL DEFAULT now(),
@@ -107,8 +107,8 @@ CREATE TABLE candidates (
  team_id text NOT NULL, category_id text NOT NULL,
  skills jsonb NOT NULL DEFAULT '[]'::jsonb, photo_url text, legacy_photo_data text,
  status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','withdrawn','archived')),
- created_by uuid REFERENCES users(id) ON DELETE SET NULL,
- updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ created_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
+ updated_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(festival_id,id),
  FOREIGN KEY(festival_id,team_id) REFERENCES festival_teams(festival_id,id),
@@ -126,8 +126,8 @@ CREATE TABLE programmes (
  status text NOT NULL DEFAULT 'pending'
   CHECK(status IN ('pending','scored','verified','published','cancelled')),
  result_published_at timestamptz, metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
- created_by uuid REFERENCES users(id) ON DELETE SET NULL,
- updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ created_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
+ updated_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(festival_id,id),
  FOREIGN KEY(festival_id,category_id) REFERENCES festival_categories(festival_id,id),
@@ -149,7 +149,7 @@ CREATE INDEX programme_participants_candidate_idx ON programme_participants(fest
 
 CREATE TABLE programme_judges (
  festival_id uuid NOT NULL, programme_id text NOT NULL, judge_user_id uuid NOT NULL,
- assigned_by uuid REFERENCES users(id) ON DELETE SET NULL, assigned_at timestamptz NOT NULL DEFAULT now(),
+ assigned_by uuid REFERENCES "users"(id) ON DELETE SET NULL, assigned_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(festival_id,programme_id,judge_user_id),
  FOREIGN KEY(festival_id,programme_id) REFERENCES programmes(festival_id,id) ON DELETE CASCADE,
  FOREIGN KEY(festival_id,judge_user_id) REFERENCES festival_memberships(festival_id,user_id) ON DELETE CASCADE
@@ -158,7 +158,7 @@ CREATE INDEX programme_judges_user_idx ON programme_judges(festival_id,judge_use
 CREATE TABLE judge_submissions (
  festival_id uuid NOT NULL, programme_id text NOT NULL, judge_user_id uuid NOT NULL,
  submitted_at timestamptz NOT NULL DEFAULT now(),
- submitted_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ submitted_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
  revision integer NOT NULL DEFAULT 1 CHECK(revision>0),
  PRIMARY KEY(festival_id,programme_id,judge_user_id),
  FOREIGN KEY(festival_id,programme_id,judge_user_id)
@@ -182,7 +182,7 @@ CREATE TABLE programme_schedule (
  day_number smallint NOT NULL CHECK(day_number BETWEEN 1 AND 7),
  start_minute smallint NOT NULL CHECK(start_minute BETWEEN 0 AND 1439),
  duration_minutes smallint CHECK(duration_minutes IS NULL OR duration_minutes BETWEEN 1 AND 1440),
- updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ updated_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
  updated_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(festival_id,programme_id),
  FOREIGN KEY(festival_id,programme_id) REFERENCES programmes(festival_id,id) ON DELETE CASCADE,
@@ -195,8 +195,8 @@ CREATE TABLE programme_appeals (
  candidate_id text NOT NULL, team_id text NOT NULL,
  reason text NOT NULL CHECK(char_length(reason) BETWEEN 1 AND 500),
  status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected')),
- submitted_by uuid REFERENCES users(id) ON DELETE SET NULL,
- decided_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ submitted_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
+ decided_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
  decision_note text, created_at timestamptz NOT NULL DEFAULT now(), decided_at timestamptz,
  PRIMARY KEY(festival_id,id),
  FOREIGN KEY(festival_id,programme_id) REFERENCES programmes(festival_id,id) ON DELETE CASCADE,
@@ -208,13 +208,13 @@ CREATE INDEX programme_appeals_status_idx ON programme_appeals(festival_id,statu
 CREATE TABLE festival_announcements (
  festival_id uuid NOT NULL REFERENCES festivals(id) ON DELETE CASCADE,
  id text NOT NULL, body text NOT NULL CHECK(char_length(body) BETWEEN 1 AND 300),
- created_by uuid REFERENCES users(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ created_by uuid REFERENCES "users"(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(festival_id,id)
 );
 CREATE TABLE festival_notifications (
  festival_id uuid NOT NULL REFERENCES festivals(id) ON DELETE CASCADE,
  id text NOT NULL, body text NOT NULL CHECK(char_length(body) BETWEEN 1 AND 300),
- recipient text NOT NULL DEFAULT 'all', created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ recipient text NOT NULL DEFAULT 'all', created_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
  created_at timestamptz NOT NULL DEFAULT now(), read_at timestamptz,
  PRIMARY KEY(festival_id,id)
 );
@@ -224,14 +224,14 @@ CREATE TABLE festival_gallery_assets (
  caption text CHECK(caption IS NULL OR char_length(caption)<=80),
  mime_type text CHECK(mime_type IS NULL OR mime_type IN ('image/jpeg','image/png','image/webp')),
  byte_size bigint CHECK(byte_size IS NULL OR byte_size>=0),
- created_by uuid REFERENCES users(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ created_by uuid REFERENCES "users"(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(festival_id,id), CHECK(storage_key IS NOT NULL OR source_url IS NOT NULL)
 );
 CREATE TABLE festival_links (
  festival_id uuid NOT NULL REFERENCES festivals(id) ON DELETE CASCADE,
  id text NOT NULL, title text NOT NULL CHECK(char_length(title)<=80),
  url text NOT NULL CHECK(char_length(url)<=500 AND url ~* '^https?://'),
- created_by uuid REFERENCES users(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ created_by uuid REFERENCES "users"(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(festival_id,id)
 );
 
@@ -247,18 +247,18 @@ CREATE TABLE coupons (
  duration_months integer NOT NULL CHECK(duration_months IN (1,3,6,12)),
  is_active boolean NOT NULL DEFAULT true, max_redemptions integer CHECK(max_redemptions IS NULL OR max_redemptions>0),
  starts_at timestamptz, expires_at timestamptz,
- created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ created_by uuid REFERENCES "users"(id) ON DELETE SET NULL,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE coupon_redemptions (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), coupon_code text NOT NULL REFERENCES coupons(code),
- user_id uuid NOT NULL REFERENCES users(id), first_redeemed_at timestamptz NOT NULL DEFAULT now(),
+ user_id uuid NOT NULL REFERENCES "users"(id), first_redeemed_at timestamptz NOT NULL DEFAULT now(),
  entitlement_until timestamptz NOT NULL, festival_limit integer, metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
  UNIQUE(coupon_code,user_id)
 );
 CREATE INDEX coupon_redemptions_user_idx ON coupon_redemptions(user_id);
 CREATE TABLE subscriptions (
- id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES "users"(id) ON DELETE CASCADE,
  plan_code text REFERENCES plans(code) ON DELETE SET NULL,
  status text NOT NULL CHECK(status IN ('trial','active','past_due','expired','cancelled','locked')),
  starts_at timestamptz NOT NULL DEFAULT now(), ends_at timestamptz,
@@ -270,13 +270,13 @@ CREATE TABLE subscriptions (
 CREATE INDEX subscriptions_user_status_idx ON subscriptions(user_id,status,ends_at DESC);
 CREATE TABLE payments (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), public_ref text NOT NULL UNIQUE,
- user_id uuid NOT NULL REFERENCES users(id), plan_code text REFERENCES plans(code) ON DELETE SET NULL,
+ user_id uuid NOT NULL REFERENCES "users"(id), plan_code text REFERENCES plans(code) ON DELETE SET NULL,
  amount_minor bigint NOT NULL CHECK(amount_minor>=0), currency char(3) NOT NULL DEFAULT 'INR',
  method text NOT NULL CHECK(method IN ('gateway','upi','manual','coupon')),
  status text NOT NULL DEFAULT 'pending'
   CHECK(status IN ('created','pending','paid','failed','cancelled','expired','rejected','refunded')),
  utr text, provider text, provider_payment_id text, checkout_url text, paid_at timestamptz,
- reviewed_by uuid REFERENCES users(id) ON DELETE SET NULL, reviewed_at timestamptz, review_note text,
+ reviewed_by uuid REFERENCES "users"(id) ON DELETE SET NULL, reviewed_at timestamptz, review_note text,
  idempotency_key text UNIQUE, metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -293,7 +293,7 @@ CREATE TABLE payment_events (
 
 CREATE TABLE platform_settings (
  key text PRIMARY KEY, value jsonb NOT NULL,
- updated_by uuid REFERENCES users(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
+ updated_by uuid REFERENCES "users"(id) ON DELETE SET NULL, updated_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO platform_settings(key,value) VALUES('organiser_signup_open','true'::jsonb) ON CONFLICT DO NOTHING;
 CREATE TABLE analytics_visits (
@@ -307,7 +307,7 @@ CREATE TABLE analytics_visits (
 CREATE INDEX analytics_visits_day_kind_idx ON analytics_visits(day_bucket,page_kind);
 CREATE INDEX analytics_visits_festival_idx ON analytics_visits(festival_id,visited_at DESC);
 CREATE TABLE assistant_usage (
- id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid REFERENCES "users"(id) ON DELETE SET NULL,
  festival_id uuid REFERENCES festivals(id) ON DELETE SET NULL, client_id text, question_hash text,
  context jsonb NOT NULL DEFAULT '{}'::jsonb,
  status text NOT NULL DEFAULT 'received' CHECK(status IN ('received','answered','failed','rate_limited')),
@@ -315,8 +315,8 @@ CREATE TABLE assistant_usage (
 );
 CREATE INDEX assistant_usage_created_idx ON assistant_usage(created_at DESC);
 CREATE TABLE platform_audit_log (
- id bigserial PRIMARY KEY, actor_id uuid REFERENCES users(id) ON DELETE SET NULL,
- target_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+ id bigserial PRIMARY KEY, actor_id uuid REFERENCES "users"(id) ON DELETE SET NULL,
+ target_user_id uuid REFERENCES "users"(id) ON DELETE SET NULL,
  festival_id uuid REFERENCES festivals(id) ON DELETE SET NULL,
  action text NOT NULL, details jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now()
 );
