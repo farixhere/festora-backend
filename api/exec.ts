@@ -106,6 +106,66 @@ async function ownerAccounts(client:any=pool) {
  }
  return {accounts,payments:payments.rows};
 }
+
+async function syncFestivalRelations(c:any,fest:string,state:any,actorId:string) {
+ const q=async(sql:string,values:any[]=[])=>c.query(sql,values);
+ // Remove dependent projection rows first; the operation log and JSON snapshot remain immutable.
+ for(const table of ["festival_gallery_assets","festival_links","festival_notifications","festival_announcements","programme_appeals","programme_schedule","judge_marks","judge_submissions","programme_judges","programme_participants","programmes","candidates"]) {
+  await q("DELETE FROM "+table+" WHERE festival_id=$1",[fest]);
+ }
+ // Configuration rows are updated in place so membership foreign keys remain valid.
+ const cfg=state.cfg||{},teams=Array.isArray(cfg.teams)?cfg.teams:[],cats=Array.isArray(cfg.cats)?cfg.cats:[],stages=Array.isArray(cfg.stages)?cfg.stages:[],subs=Array.isArray(cfg.subs)?cfg.subs:[];
+ for(let i=0;i<teams.length;i++) await q("INSERT INTO festival_teams(festival_id,id,name,sort_order,is_active) VALUES($1,$2,$3,$4,true) ON CONFLICT(festival_id,id) DO UPDATE SET name=EXCLUDED.name,sort_order=EXCLUDED.sort_order,is_active=true",[fest,String(teams[i].id),String(teams[i].name||"Team").slice(0,80),i]);
+ for(let i=0;i<cats.length;i++) await q("INSERT INTO festival_categories(festival_id,id,name,sort_order,metadata) VALUES($1,$2,$3,$4,$5) ON CONFLICT(festival_id,id) DO UPDATE SET name=EXCLUDED.name,sort_order=EXCLUDED.sort_order,metadata=EXCLUDED.metadata",[fest,String(cats[i].id),String(cats[i].name||"Category").slice(0,80),i,JSON.stringify({base:Number(cats[i].base)||0})]);
+ for(let i=0;i<stages.length;i++) await q("INSERT INTO festival_stages(festival_id,id,name,sort_order) VALUES($1,$2,$3,$4) ON CONFLICT(festival_id,id) DO UPDATE SET name=EXCLUDED.name,sort_order=EXCLUDED.sort_order",[fest,String(stages[i].id),String(stages[i].name||"Stage").slice(0,80),i]);
+ for(let i=0;i<subs.length;i++) await q("INSERT INTO festival_subfestivals(festival_id,id,name,sort_order) VALUES($1,$2,$3,$4) ON CONFLICT(festival_id,id) DO UPDATE SET name=EXCLUDED.name,sort_order=EXCLUDED.sort_order",[fest,String(subs[i].id),String(subs[i].name||"Sub-festival").slice(0,80),i]);
+ const teamIds=teams.map((x:any)=>String(x.id));
+ await q("UPDATE festival_memberships SET team_id=NULL WHERE festival_id=$1 AND team_id IS NOT NULL AND NOT(team_id=ANY($2::text[]))",[fest,teamIds]);
+ await q("DELETE FROM festival_teams WHERE festival_id=$1 AND NOT(id=ANY($2::text[]))",[fest,teamIds]);
+ await q("DELETE FROM festival_categories WHERE festival_id=$1 AND NOT(id=ANY($2::text[]))",[fest,cats.map((x:any)=>String(x.id))]);
+ await q("DELETE FROM festival_stages WHERE festival_id=$1 AND NOT(id=ANY($2::text[]))",[fest,stages.map((x:any)=>String(x.id))]);
+ await q("DELETE FROM festival_subfestivals WHERE festival_id=$1 AND NOT(id=ANY($2::text[]))",[fest,subs.map((x:any)=>String(x.id))]);
+ const memberships=await q("SELECT u.username,m.user_id FROM festival_memberships m JOIN users u ON u.id=m.user_id WHERE m.festival_id=$1 AND m.is_active=true",[fest]);
+ const judgeIds=new Map(memberships.rows.map((x:any)=>[x.username,x.user_id]));
+ const candidates=Array.isArray(state.cands)?state.cands:[];
+ for(const x of candidates) await q("INSERT INTO candidates(festival_id,id,name,team_id,category_id,skills,legacy_photo_data,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8)",[fest,String(x.id),String(x.name||"Candidate").slice(0,60),String(x.team),String(x.cat),JSON.stringify(Array.isArray(x.skills)?x.skills:[]),typeof x.photo==="string"&&x.photo.startsWith("data:image/")?x.photo:null,actorId]);
+ const programmes=Array.isArray(state.progs)?state.progs:[];
+ for(const p of programmes) {
+  await q("INSERT INTO programmes(festival_id,id,name,category_id,stage_id,subfestival_id,topics_enabled,status,result_published_at,metadata,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)",[fest,String(p.id),String(p.n||"Programme").slice(0,60),String(p.cat),String(p.stage),p.sf?String(p.sf):null,!!p.topic,String(p.status||"pending"),p.pubT?new Date(Number(p.pubT)):null,JSON.stringify({judges:p.judges||[]}),actorId]);
+  const parts=Array.isArray(p.parts)?p.parts:[];
+  for(let i=0;i<parts.length;i++) await q("INSERT INTO programme_participants(festival_id,programme_id,candidate_id,topic,sort_order) VALUES($1,$2,$3,$4,$5)",[fest,String(p.id),String(parts[i]),p.topics?.[parts[i]]||null,i]);
+  const judges=Array.isArray(p.judges)?p.judges:[];
+  for(const j of judges) {
+   const uid=judgeIds.get(String(j));if(!uid)continue;
+   await q("INSERT INTO programme_judges(festival_id,programme_id,judge_user_id,assigned_by) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",[fest,String(p.id),uid,actorId]);
+   if(p.subm?.[j]) {
+    await q("INSERT INTO judge_submissions(festival_id,programme_id,judge_user_id,submitted_by) VALUES($1,$2,$3,$4) ON CONFLICT(festival_id,programme_id,judge_user_id) DO UPDATE SET submitted_at=now(),submitted_by=EXCLUDED.submitted_by,revision=judge_submissions.revision+1",[fest,String(p.id),uid,actorId]);
+    const marks=p.marks?.[j]||{};
+    for(const [cid,score] of Object.entries(marks)) if(parts.includes(cid)) await q("INSERT INTO judge_marks(festival_id,programme_id,judge_user_id,candidate_id,score) VALUES($1,$2,$3,$4,$5) ON CONFLICT(festival_id,programme_id,judge_user_id,candidate_id) DO UPDATE SET score=EXCLUDED.score,updated_at=now()",[fest,String(p.id),uid,String(cid),Number(score)]);
+   }
+  }
+ }
+ const sched=Array.isArray(state.sched)?state.sched:[];
+ for(const x of sched) if(programmes.some((p:any)=>String(p.id)===String(x.pid))&&stages.some((v:any)=>String(v.id)===String(x.stage))) await q("INSERT INTO programme_schedule(festival_id,programme_id,stage_id,day_number,start_minute,duration_minutes,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(festival_id,programme_id) DO UPDATE SET stage_id=EXCLUDED.stage_id,day_number=EXCLUDED.day_number,start_minute=EXCLUDED.start_minute,duration_minutes=EXCLUDED.duration_minutes,updated_by=EXCLUDED.updated_by,updated_at=now()",[fest,String(x.pid),String(x.stage),Math.max(1,Math.min(7,Number(x.day)||1)),Math.max(0,Math.min(1439,Number(x.t)||0)),Math.max(1,Math.min(1440,Number(cfg.slot)||30)),actorId]);
+ const appeals=Array.isArray(state.appeals)?state.appeals:[];
+ for(const x of appeals) {
+  const p=programmes.find((v:any)=>String(v.id)===String(x.pid));if(!p)continue;
+  const candidate=candidates.find((v:any)=>p.parts?.includes(v.id)&&String(v.team)===String(x.team));if(!candidate)continue;
+  const submitter=memberships.rows.find((v:any)=>String(v.username)===String(x.by||""))?.user_id||actorId;
+  await q("INSERT INTO programme_appeals(festival_id,id,programme_id,candidate_id,team_id,reason,status,submitted_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(festival_id,id) DO UPDATE SET reason=EXCLUDED.reason,status=EXCLUDED.status",[fest,String(x.id),String(x.pid),String(candidate.id),String(x.team),String(x.reason||"Appeal").slice(0,500),["pending","accepted","rejected"].includes(x.status)?x.status:"pending",submitter]);
+ }
+ for(const x of (state.news||[])) await q("INSERT INTO festival_announcements(festival_id,id,body,created_by) VALUES($1,$2,$3,$4) ON CONFLICT(festival_id,id) DO UPDATE SET body=EXCLUDED.body",[fest,String(x.id),String(x.txt||"").slice(0,300),actorId]);
+ for(const x of (state.notifs||[])) await q("INSERT INTO festival_notifications(festival_id,id,body,recipient,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(festival_id,id) DO UPDATE SET body=EXCLUDED.body,recipient=EXCLUDED.recipient",[fest,String(x.id),String(x.txt||"").slice(0,300),String(x.to||"all"),actorId]);
+ for(const x of (state.gallery||[])) {
+  const src=String(x.src||"");if(!src)continue;
+  const mime=src.startsWith("data:image/png")?"image/png":src.startsWith("data:image/webp")?"image/webp":"image/jpeg";
+  await q("INSERT INTO festival_gallery_assets(festival_id,id,source_url,caption,mime_type,byte_size,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(festival_id,id) DO UPDATE SET source_url=EXCLUDED.source_url,caption=EXCLUDED.caption,mime_type=EXCLUDED.mime_type,byte_size=EXCLUDED.byte_size",[fest,String(x.id),src,String(x.cap||"").slice(0,80),mime,Math.floor(src.length*0.75),actorId]);
+ }
+ for(const x of (state.links||[])) await q("INSERT INTO festival_links(festival_id,id,title,url,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(festival_id,id) DO UPDATE SET title=EXCLUDED.title,url=EXCLUDED.url",[fest,String(x.id),String(x.t||x.url||"Link").slice(0,80),String(x.url||"").slice(0,500),actorId]);
+ const locks=state.locks||{},brand=state.brand||{},site=state.site||{};
+ await q("UPDATE festivals SET public_mode=$2,registration_locked=$3,registration_closes_on=$4,results_locked=$5,team_login_locked=$6,brand_color=$7,logo_url=$8,settings=$9,updated_at=now() WHERE id=$1",[fest,["open","results","code","closed"].includes(locks.pub)?locks.pub:"open",!!locks.reg,locks.regDate||null,!!locks.results,!!locks.teams,brand.color||null,brand.logo||null,JSON.stringify({cfg:cfg,site:site,brand:{...brand,logo:brand.logo?"[stored in festival snapshot]":""},locks:{...locks,fest:!!locks.fest},tpl:state.tpl||{}})]);
+}
+
 async function dispatch(body:any,req:VercelRequest) {
  const action=body.action, token=text(body.token,500);
  if(action==="sendOtp") {
@@ -253,6 +313,7 @@ async function dispatch(body:any,req:VercelRequest) {
    const ctr=await c.query("INSERT INTO festival_counters(festival_id,last_seq) VALUES($1,1) ON CONFLICT(festival_id) DO UPDATE SET last_seq=festival_counters.last_seq+1,updated_at=now() RETURNING last_seq",[fest]);
    const seq=Number(ctr.rows[0].last_seq);
    await c.query("INSERT INTO operation_log(festival_id,actor_id,operation,festival_seq,client_id,operation_type,actor_role,actor_team_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[fest,u.id,JSON.stringify(opRecord),seq,cid,type,m.role,m.team_id||null]);
+   await syncFestivalRelations(c,fest,state,u.id);
    await c.query("UPDATE festivals SET data=$2,updated_at=now() WHERE id=$1",[fest,JSON.stringify(state)]);
    return {ops:[{...opRecord,seq}],seq};
   });
