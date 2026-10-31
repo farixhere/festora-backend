@@ -120,3 +120,19 @@ The SQL migration is the source of truth for database constraints and indexes. T
 - Recorded the exact SHA-256 migration hash in `drizzle.__drizzle_migrations` so Drizzle's migration ledger reflects the applied SQL.
 - Deleted both temporary branches created for schema testing/migration preview. Neon now lists only the main branch.
 - The staging Vercel deployment and frontend/Apps Script integration were not changed by this rollout.
+
+
+## Live relational projection
+
+Every accepted festival operation is applied to the canonical festival snapshot and operation log inside one database transaction. Before commit, the resulting state is projected into the normalized domain tables:
+- Configuration: teams (including colour), categories, stages and sub-festivals.
+- Participants: candidate identity, team, category, chest number, skills and legacy photo data.
+- Programmes: participant enrolments, topics, judge assignments, judge submissions, marks and schedule.
+- Operations: appeals, announcements, notifications, gallery assets and links.
+- Festival-level settings: public mode, registration/results locks, team access, branding and site configuration.
+
+The JSONB snapshot and ordered operation log remain the compatibility/sync source of truth for the current frontend contract. The normalized tables are now updated transactionally from each accepted state, so application data is queryable relationally without breaking the existing replay protocol.
+
+Images are currently persisted in the existing legacy data fields / gallery source URL as data URIs. This keeps the current frontend working but is not the final scalable media architecture; moving these assets to object storage and storing object keys is a separate production-readiness task.
+
+Migration `0004_candidate_team_projection.sql` adds the candidate chest number and team colour columns used by the relational projection.
