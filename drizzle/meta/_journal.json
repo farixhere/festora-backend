@@ -15,6 +15,13 @@
       "when": 1793437400001,
       "tag": "0001_festora_domain",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793440700000,
+      "tag": "0002_system_plan_rows",
+      "breakpoints": true
     }
   ]
 }
