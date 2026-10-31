@@ -47,7 +47,7 @@ export const operationLog=pgTable("operation_log",{
  operation:jsonb("operation").notNull(),festivalSeq:bigint("festival_seq",{mode:"number"}),clientId:text("client_id"),
  operationType:text("operation_type"),actorRole:text("actor_role"),actorTeamId:text("actor_team_id"),
  requestHash:text("request_hash"),createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow()
-},t=>({festivalSeqIdx:index("operation_log_festival_seq_idx").on(t.festivalId,t.festivalSeq),clientUnique:uniqueIndex("operation_log_festival_client_unique").on(t.festivalId,t.clientId)}));
+},t=>({festivalSeqIdx:index("operation_log_festival_seq_idx").on(t.festivalId,t.seq),clientUnique:uniqueIndex("operation_log_festival_client_unique").on(t.festivalId,t.clientId)}));
 
 export const festivalCounters=pgTable("festival_counters",{
  festivalId:uuid("festival_id").primaryKey(),lastSeq:bigint("last_seq",{mode:"number"}).notNull().default(0),
