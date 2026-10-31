@@ -45,7 +45,7 @@ async function getPlan(userId:string,fest?:string,client:any=pool) {
   const previousTrial=await client.query("SELECT * FROM subscriptions WHERE user_id=$1 AND source='trial' ORDER BY created_at LIMIT 1",[userId]);
   if(previousTrial.rows[0]) return {tier:"expired",ends:previousTrial.rows[0].ends_at,maxStudents:40,paid:false,locked:false,everPaid:false,paidUntil:previousTrial.rows[0].ends_at};
  }
- if(!sub) return {tier:"free",ends:new Date(Date.now()+7*86400000).toISOString(),maxStudents:40,paid:false,locked:false,everPaid:false,paidUntil:null};
+ if(!sub) return {tier:"free",ends:new Date(Date.now()+299*3600000).toISOString(),maxStudents:40,paid:false,locked:false,everPaid:false,paidUntil:null};
  if(sub.status==="locked") return {tier:"locked",ends:sub.ends_at,maxStudents:40,paid:false,locked:true,everPaid:false,paidUntil:sub.ends_at};
  if(["expired","cancelled","past_due"].includes(sub.status) || (sub.ends_at && new Date(sub.ends_at).getTime()<Date.now())) return {tier:"expired",ends:sub.ends_at,maxStudents:40,paid:false,locked:false,everPaid:sub.plan_code!=="free",paidUntil:sub.ends_at};
  const tier=sub.plan_code==="free"?"free":"paid";
@@ -81,7 +81,7 @@ async function festivalRow(fest:string,client:any=pool) {
 }
 async function createTrial(userId:string,fest:string,client:any) {
  await client.query(`INSERT INTO subscriptions(user_id,plan_code,status,starts_at,ends_at,trial_festival_id,source)
- VALUES($1,'free','active',now(),now()+interval '7 days',$2,'trial')`,[userId,fest]);
+ VALUES($1,'free','active',now(),now()+interval '299 hours',$2,'trial')`,[userId,fest]);
 }
 async function refreshCoupons(client:any=pool) {
  const r=await client.query(`SELECT c.code,c.label,c.duration_months AS months,c.is_active AS active,
@@ -200,7 +200,7 @@ async function dispatch(body:any,req:VercelRequest) {
    const cfg=await pool.query("SELECT key,value FROM platform_settings WHERE key IN ('upi_id','online_payments_enabled')");
    const settings=Object.fromEntries(cfg.rows.map((x:any)=>[x.key,x.value]));
    const plans=Object.fromEntries(pr.rows.map((x:any)=>[x.code,x]));
-   return {plan:p,fests:perFestival,plans,upi:settings.upi_id||"",online:settings.online_payments_enabled===true,coupon:!!u.metadata?.couponLogin,trialHours:168,trialStudents:40,payments:pay.rows};
+   return {plan:p,fests:perFestival,plans,upi:settings.upi_id||"",online:settings.online_payments_enabled===true,coupon:!!u.metadata?.couponLogin,trialHours:299,trialStudents:40,payments:pay.rows};
   }
   const fests=await userFests(u);
   const plan=fests.length?await getPlan(u.id,fests[0].id):await getPlan(u.id);
@@ -215,7 +215,7 @@ async function dispatch(body:any,req:VercelRequest) {
    await c.query("INSERT INTO festivals(id,name,slug,created_by,institution,data,settings) VALUES($1,$2,$3,$4,$5,$6,'{}')",[id,name,slug,u.id,u.institution||null,JSON.stringify(state)]);
    await c.query("INSERT INTO festival_memberships(festival_id,user_id,role,display_name) VALUES($1,$2,'org',$3)",[id,u.id,u.display_name||u.username]);
    await c.query("INSERT INTO festival_counters(festival_id,last_seq) VALUES($1,0)",[id]);
-   const existingTrial=await c.query("SELECT 1 FROM subscriptions WHERE user_id=$1 AND source='trial' LIMIT 1",[u.id]);
+   const existingTrial=await c.query("SELECT 1 FROM subscriptions s JOIN organiser_profiles op ON op.user_id=s.user_id WHERE lower(trim(op.institution))=lower(trim($1)) AND s.source='trial' LIMIT 1",[u.institution||""]);
    const existingPaid=await c.query("SELECT 1 FROM subscriptions WHERE user_id=$1 AND plan_code<>'free' AND status='active' AND (ends_at IS NULL OR ends_at>now()) LIMIT 1",[u.id]);
    if(!existingTrial.rows[0]&&!existingPaid.rows[0]) await createTrial(u.id,id,c);
    await c.query("INSERT INTO platform_audit_log(actor_id,festival_id,action,details) VALUES($1,$2,'festival.create',jsonb_build_object('name',$3))",[u.id,id,name]);
