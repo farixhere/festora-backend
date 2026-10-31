@@ -113,6 +113,7 @@ const R={
     if(m.role==="judge"){j=m.u;if(!p.judges.includes(j))return}else if(ADM(m)){j=sid(a.j);if(!j||(j!=="adm"&&!p.judges.includes(j))||(j==="adm"&&!p.judges.includes("adm")&&p.judges.length))return}else return;
     if(p.subm[j])return;const mk={};for(const cid of p.parts){const v=Number((a.marks||{})[cid]);if(!(v>=0&&v<=100))return;mk[cid]=Math.round(v*10)/10}
     if(j==="adm"&&!p.judges.includes("adm"))p.judges.push("adm");
+    if(j==="adm"){if(!p.judgeUsers)p.judgeUsers={};p.judgeUsers.adm=m.u}
     p.marks[j]=mk;p.subm[j]=true;addLog(S,m,m.role==="judge"?`${p.n}: ${m.name||m.u} submitted marks`:`${p.n}: marks entered by ${m.name||"admin"}${j==="adm"?"":" for a judge"}`);
     if(p.judges.every(j=>p.subm[j])){p.status="scored";addNote(S,m,op.cid,`${p.n}: all judges have submitted. Please verify.`,"admin")}},
   verify(S,a,m){if(!ADM(m))return;const p=pOf(S,a.pid);if(p&&p.status==="scored"){p.status="verified";addLog(S,m,`${p.n}: scores verified`)}},
