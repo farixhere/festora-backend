@@ -3,8 +3,9 @@ import {
   numeric, jsonb, date, char, index, uniqueIndex, primaryKey
 } from "drizzle-orm/pg-core";
 
-// Drizzle metadata for Festora v1. Composite foreign keys and some SQL CHECK
-// constraints are kept in drizzle/0001_festora_domain.sql as the authoritative DDL.
+// Drizzle column/table map for Festora v1. The SQL migration is authoritative
+// for composite foreign keys, simple foreign keys, checks and the full index set.
+// Do not run `drizzle-kit generate` until this metadata is brought to full DDL parity.
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(), username: text("username").notNull(),
