@@ -50,29 +50,47 @@ Compatibility target: preserve the existing frontend's action-based POST protoco
 | `setCoupon` | `code`, `active` | refreshed coupon data |
 | `setPassword` | `u`, `p`; another call includes `u`, `old`, `p` | not yet fully specified |
 | `setSignup` | `open` | not yet fully specified |
-| `signup` | signup form object including username, password, email and optional OTP fields | `token`, `user` |
+| `signup` | `name`, `inst`, `phone`, `place`, `email`, `u`, `p`, `otp` | `token`, `user` |
 | `users` | `fest` | `users` |
 
-## Important operation-sync contract
+## Operation-sync protocol
 
-The frontend's sync layer:
+The frontend sync layer:
 - Loads a festival using `pull({ fest, since: 0 })`.
 - Applies returned operations in ascending sequence order and tracks `seq`.
 - Sends local operations using `push({ fest, op: { type, a, cid }, since })`.
 - Polls using `pull({ fest, since, plan? })`.
-- Expects operation records to contain at least a sequence number and the operation fields used by its reducer. The full operation schema and all operation types must be extracted from the frontend reducer before implementing sync.
+- Each locally created operation includes `type`, argument object `a`, client ID `cid`, and local metadata `m: { u, role, team, name, t }`. The push request transmits `type`, `a`, and `cid`; server-side actor metadata must be derived from the authenticated session, not trusted from the client.
+- The reducer ignores operations with unknown types and blocks writes when the festival lock is active, except the festival-unlock operation.
+- The reducer applies operation functions with arguments `a`, actor metadata `m`, and the full operation record.
 
-Do not implement a generic last-write-wins JSON blob or invent operation semantics. Preserve the frontend's operation ordering, idempotency/client IDs, conflict behavior and authorization rules after the reducer is audited.
+### Reducer operation types confirmed in source (35)
+
+`cfg`, `reg`, `bulk`, `editCand`, `delCand`, `enroll`, `sub`, `topics`, `addProg`, `editProg`, `delProg`, `autoSched`, `setTime`, `marks`, `verify`, `rescore`, `publish`, `unpublish`, `appeal`, `decide`, `news`, `delNews`, `notify`, `photo`, `delPhoto`, `link`, `delLink`, `site`, `lock`, `regDate`, `pub`, `teamLock`, `candPhoto`, `brand`, `tpl`.
+
+These names are confirmed, but the complete argument schemas and validation rules for all 35 reducers still need to be documented before implementation. Do not invent operation semantics or use a generic last-write-wins JSON blob. Preserve operation ordering, idempotency/client IDs, conflict behavior and authorization after the reducer is fully audited.
+
+## State model visible in the frontend
+
+A blank festival state contains:
+- `cfg`: teams, categories, stages, sub-fests, scheduling constraints and scoring points.
+- `cands`: registered candidates.
+- `progs`: programmes, participants, judge assignments, marks and result state.
+- `sched`: programme/stage/day/time assignments.
+- `appeals`, `news`, `notifs`, `gallery`, `links`, `log`.
+- `tpl`, `brand`, `locks`, and public `site` configuration.
+
+The initial state defaults and reducer code are in the frontend source. Database normalization and JSON storage boundaries must be decided after the full reducer audit, not assumed from this summary.
 
 ## Known role-sensitive behavior visible in the frontend
 
-The UI distinguishes roles including `org`, `team`, `admin` and a master/owner account context. The exact authoritative role model, permissions and master-account checks must be extracted from frontend call sites and existing UI logic; do not infer permissions solely from labels.
+The UI distinguishes roles including `owner`, `org`, `admin`, `team` and `judge`. The frontend helper treats `owner`, `org` and `admin` as admin-capable for reducer operations; team users are scoped to their team for registration operations. This is a frontend observation, not yet a complete server authorization policy. The server must enforce permissions independently.
 
 ## Remaining audit work before implementation
 
 1. Record complete response shapes for all 33 actions by tracing every caller and every property read.
 2. Extract signup/login validation, session expiry, role and festival-membership behavior.
-3. Extract all operation types and reducer behavior from the `apply` function and operation constructors.
+3. Document argument schemas and authorization/validation rules for all 35 reducer operations.
 4. Identify public API access rules, public-code handling and visibility states.
 5. Document payment provider integration and distinguish verified payment from user-submitted UTR claims.
 6. Convert the confirmed contract into request/response schemas and integration tests.
