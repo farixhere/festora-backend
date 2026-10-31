@@ -108,3 +108,15 @@ The existing `users`, `festivals`, `festival_memberships`, `sessions` and `opera
 ## Tooling note
 
 The SQL migration is the source of truth for database constraints and indexes. The TypeScript Drizzle file provides table/column typing but does not yet mirror every foreign key and index one-for-one. Do not run `drizzle-kit generate` against this intermediate metadata; it could propose unwanted constraint changes. Before enabling schema generation, complete the Drizzle metadata parity pass and verify it against a fresh database introspection.
+
+
+## Main-branch rollout completed (2026-10-31)
+
+- User approved applying the additive domain migration to the main Neon branch.
+- All 66 migration statements completed successfully in one transaction on `main`.
+- Verification confirms 34 public tables total: the original five plus 29 domain tables.
+- Verified the added `users.phone` and `festivals.public_mode` columns and key domain tables.
+- Verified current row counts remain zero for users, festivals and operation log; no external data was imported or deleted.
+- Recorded the exact SHA-256 migration hash in `drizzle.__drizzle_migrations` so Drizzle's migration ledger reflects the applied SQL.
+- Deleted both temporary branches created for schema testing/migration preview. Neon now lists only the main branch.
+- The staging Vercel deployment and frontend/Apps Script integration were not changed by this rollout.
