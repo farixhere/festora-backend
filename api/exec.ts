@@ -136,7 +136,7 @@ async function syncFestivalRelations(c:any,fest:string,state:any,actorId:string)
   for(let i=0;i<parts.length;i++) await q("INSERT INTO programme_participants(festival_id,programme_id,candidate_id,topic,sort_order) VALUES($1,$2,$3,$4,$5)",[fest,String(p.id),String(parts[i]),p.topics?.[parts[i]]||null,i]);
   const judges=Array.isArray(p.judges)?p.judges:[];
   for(const j of judges) {
-   const uid=judgeIds.get(String(j));if(!uid)continue;
+   const judgeName=String(p.judgeUsers?.[j]||j);const uid=judgeIds.get(judgeName);if(!uid)continue;
    await q("INSERT INTO programme_judges(festival_id,programme_id,judge_user_id,assigned_by) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",[fest,String(p.id),uid,actorId]);
    if(p.subm?.[j]) {
     await q("INSERT INTO judge_submissions(festival_id,programme_id,judge_user_id,submitted_by) VALUES($1,$2,$3,$4) ON CONFLICT(festival_id,programme_id,judge_user_id) DO UPDATE SET submitted_at=now(),submitted_by=EXCLUDED.submitted_by,revision=judge_submissions.revision+1",[fest,String(p.id),uid,actorId]);
