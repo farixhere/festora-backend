@@ -3,6 +3,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createHash, createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual, randomUUID } from "node:crypto";
 import { pool } from "../src/db/client";
 import { env, allowedOrigins } from "../src/lib/env";
+import { sendMail, mailConfigured } from "../src/lib/mail";
 import { apply, blankFest, ADMIN_ROLES } from "../src/domain/reducer";
 
 const actions = new Set(["accounts","addCoupon","addUser","ask","buy","checkPay","claimPay","couponLogin","coupons","createFest","deleteFest","deleteUser","festInfo","fests","hit","login","logout","myPlan","organisers","ownerStats","public","pull","push","redeem","reviewPay","sendOtp","setAccount","setCode","setCoupon","setPassword","setSignup","signup","users"]);
@@ -176,13 +177,13 @@ async function dispatch(body:any,req:VercelRequest) {
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail(400,"Enter a valid email address.");
   const existingEmail=await pool.query("SELECT 1 FROM users WHERE lower(email)=lower($1) LIMIT 1",[email]);
   if(existingEmail.rows[0]) throw fail(409,"An account with this email already exists. Please log in instead.");
-  if(!env.RESEND_API_KEY || !env.EMAIL_FROM || !env.AUTH_SECRET) throw fail(503,"Email verification is not configured yet. Festora needs its email sender settings before accounts can be created.");
+  if(!mailConfigured() || !env.AUTH_SECRET) throw fail(503,"Email verification is not configured yet. Festora needs its email sender settings before accounts can be created.");
   const recent=await pool.query("SELECT count(*)::int AS n FROM email_otp_challenges WHERE email=$1 AND created_at>now()-interval '15 minutes'",[email]);
   if(recent.rows[0].n>=3) throw fail(429,"Too many verification codes requested. Try again in 15 minutes.");
   const code=String(randomInt(100000,999999));
   await pool.query("INSERT INTO email_otp_challenges(email,code_hash,purpose,expires_at) VALUES($1,$2,'signup',now()+interval '10 minutes')",[email,otpHash(email,code)]);
-  const mail=await fetch("https://api.resend.com/emails",{method:"POST",headers:{Authorization:"Bearer "+env.RESEND_API_KEY,"Content-Type":"application/json"},body:JSON.stringify({from:env.EMAIL_FROM,to:[email],subject:"Your Festora verification code",html:`<div style="font-family:Arial,sans-serif"><h2>Verify your Festora account</h2><p>Your verification code is:</p><p style="font-size:30px;font-weight:700;letter-spacing:8px">${code}</p><p>This code expires in 10 minutes. If you did not request it, ignore this email.</p></div>`})});
-  if(!mail.ok) { throw fail(502,"The email provider did not confirm delivery. If a code arrived, you can still enter it; otherwise request a new code."); }
+  const mailSent=await sendMail(email,"Your Festora verification code",`<div style="font-family:Arial,sans-serif"><h2>Verify your Festora account</h2><p>Your verification code is:</p><p style="font-size:30px;font-weight:700;letter-spacing:8px">${code}</p><p>This code expires in 10 minutes. If you did not request it, ignore this email.</p></div>`);
+  if(!mailSent) { throw fail(502,"The email provider did not confirm delivery. If a code arrived, you can still enter it; otherwise request a new code."); }
   return {sent:true};
  }
  if(action==="signup") {
