@@ -4,7 +4,7 @@
   "private": true,
   "description": "Festora production API powered by Neon PostgreSQL",
   "engines": {
-    "node": "20.x"
+    "node": "26.x"
   },
   "scripts": {
     "dev": "vercel dev",
