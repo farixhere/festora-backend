@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { env, allowedOrigins } from "../src/lib/env";
+import { pool } from "../src/db/client";
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   const origin = req.headers.origin;
 
   if (origin && allowedOrigins.has(origin)) {
@@ -22,10 +23,24 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ ok: false, error: "Method not allowed." });
   }
 
-  return res.status(200).json({
-    ok: true,
-    service: "festora-backend",
-    environment: env.APP_ENV,
-    databaseConfigured: Boolean(env.DATABASE_URL)
-  });
+  try {
+    await pool.query("SELECT 1");
+
+    return res.status(200).json({
+      ok: true,
+      service: "festora-backend",
+      environment: env.APP_ENV,
+      databaseConfigured: Boolean(env.DATABASE_URL),
+      databaseConnected: true
+    });
+  } catch {
+    return res.status(503).json({
+      ok: false,
+      service: "festora-backend",
+      environment: env.APP_ENV,
+      databaseConfigured: Boolean(env.DATABASE_URL),
+      databaseConnected: false,
+      error: "Database connection failed."
+    });
+  }
 }

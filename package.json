@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "Staging-first replacement API for Festora",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vercel dev",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "build": "npm run typecheck"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.12",
