@@ -174,6 +174,8 @@ async function dispatch(body:any,req:VercelRequest) {
   const signupSetting=await pool.query("SELECT value FROM platform_settings WHERE key='signup_open'");
   if(signupSetting.rows[0]?.value===false) throw fail(403,"New account registration is currently closed.");
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail(400,"Enter a valid email address.");
+  const existingEmail=await pool.query("SELECT 1 FROM users WHERE lower(email)=lower($1) LIMIT 1",[email]);
+  if(existingEmail.rows[0]) throw fail(409,"An account with this email already exists. Please log in instead.");
   if(!env.RESEND_API_KEY || !env.EMAIL_FROM || !env.AUTH_SECRET) throw fail(503,"Email verification is not configured yet. Festora needs its email sender settings before accounts can be created.");
   const recent=await pool.query("SELECT count(*)::int AS n FROM email_otp_challenges WHERE email=$1 AND created_at>now()-interval '15 minutes'",[email]);
   if(recent.rows[0].n>=3) throw fail(429,"Too many verification codes requested. Try again in 15 minutes.");
@@ -196,6 +198,10 @@ async function dispatch(body:any,req:VercelRequest) {
    await c.query("SELECT pg_advisory_xact_lock(739281)");
    const signupSetting=await c.query("SELECT value FROM platform_settings WHERE key='signup_open'");
    if(signupSetting.rows[0]?.value===false) throw fail(403,"New account registration is currently closed.");
+   const existingEmail=await c.query("SELECT 1 FROM users WHERE lower(email)=lower($1) LIMIT 1",[email]);
+   if(existingEmail.rows[0]) throw fail(409,"An account with this email already exists. Please log in instead.");
+   const existingUsername=await c.query("SELECT 1 FROM users WHERE lower(username)=lower($1) LIMIT 1",[username]);
+   if(existingUsername.rows[0]) throw fail(409,"That username is already taken. Choose another username.");
    const ownerExists=await c.query("SELECT EXISTS(SELECT 1 FROM users WHERE role='owner') AS has_owner");
    const role=ownerExists.rows[0].has_owner?"org":"owner";
    const inserted=await c.query(`INSERT INTO users(username,email,password_hash,display_name,role,phone,institution,place,email_verified_at)
@@ -480,5 +486,5 @@ export default async function handler(req:VercelRequest,res:VercelResponse) {
  const body=req.body&&typeof req.body==="object"?req.body:{};
  if(typeof body.action!=="string"||!actions.has(body.action))return send(res,400,{error:"Unknown API action."});
  try { const out=await dispatch(body,req); return send(res,200,out); }
- catch(e:any){const status=e.status||(e.code==="23505"?409:500); if(status>=500)console.error("Festora API error",body.action,e.message);return send(res,status,{error:e.message||"The request could not be completed."});}
+ catch(e:any){let status=e.status||(e.code==="23505"?409:500);let message=e.message||"The request could not be completed.";if(e.code==="23505"){status=409;if(e.constraint==="users_email_unique"||String(e.constraint||"").includes("email"))message="An account with this email already exists. Please log in instead.";else if(e.constraint==="users_username_unique"||String(e.constraint||"").includes("username"))message="That username is already taken. Choose another username.";else message="This account conflicts with an existing record. Check your details and try again.";}if(status>=500)console.error("Festora API error",body.action,message);return send(res,status,{error:message});}
 }
