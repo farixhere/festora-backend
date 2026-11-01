@@ -8,7 +8,7 @@ Festora's independent production API, deployed on Vercel and powered by Neon Pos
 - API: https://festora-backend-dupekingsam-7855.vercel.app/api/exec
 - Health: https://festora-backend-dupekingsam-7855.vercel.app/api/health
 - Database: Neon PostgreSQL
-- Runtime: Node.js 20.x, Vercel Functions, TypeScript, Drizzle ORM
+- Runtime: Node.js 26.x, Vercel Functions, TypeScript, Drizzle ORM
 
 ## API contract
 
@@ -33,7 +33,7 @@ Festora's independent production API, deployed on Vercel and powered by Neon Pos
 
 ## Development
 
-1. Install Node.js 20.x.
+1. Install Node.js 26.x.
 2. Run `npm install`.
 3. Copy `.env.example` to `.env`.
 4. Configure the environment variables above using development credentials.
