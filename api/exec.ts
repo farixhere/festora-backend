@@ -180,7 +180,7 @@ async function dispatch(body:any,req:VercelRequest) {
   const code=String(randomInt(100000,999999));
   await pool.query("INSERT INTO email_otp_challenges(email,code_hash,purpose,expires_at) VALUES($1,$2,'signup',now()+interval '10 minutes')",[email,otpHash(email,code)]);
   const mail=await fetch("https://api.resend.com/emails",{method:"POST",headers:{Authorization:"Bearer "+env.RESEND_API_KEY,"Content-Type":"application/json"},body:JSON.stringify({from:env.EMAIL_FROM,to:[email],subject:"Your Festora verification code",html:`<div style="font-family:Arial,sans-serif"><h2>Verify your Festora account</h2><p>Your verification code is:</p><p style="font-size:30px;font-weight:700;letter-spacing:8px">${code}</p><p>This code expires in 10 minutes. If you did not request it, ignore this email.</p></div>`})});
-  if(!mail.ok) { await pool.query("DELETE FROM email_otp_challenges WHERE email=$1 AND purpose='signup' AND consumed_at IS NULL",[email]); throw fail(502,"We couldn't send the verification email. Check the email service configuration."); }
+  if(!mail.ok) { throw fail(502,"The email provider did not confirm delivery. If a code arrived, you can still enter it; otherwise request a new code."); }
   return {sent:true};
  }
  if(action==="signup") {
