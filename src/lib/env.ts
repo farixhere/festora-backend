@@ -8,6 +8,10 @@ const envSchema = z.object({
   APP_ENV: z.string().default("development"),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
   PUBLIC_APP_URL: z.string().url().optional()
 });
 
