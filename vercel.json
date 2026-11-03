@@ -4,5 +4,8 @@
       "maxDuration": 10
     }
   },
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "regions": [
+    "sin1"
+  ]
 }
